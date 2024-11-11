@@ -5,6 +5,7 @@ obj/
 *.suo
 *.userosscache
 *.sln.docstates
+tasks.txt
 
 ## Visual Studio files
 .vs/
