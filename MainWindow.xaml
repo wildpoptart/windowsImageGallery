@@ -16,14 +16,15 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Thumbnail Size:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <Slider x:Name="ThumbnailSizeSlider" Width="100" 
-                        Minimum="50" Maximum="300" Value="150"
-                        VerticalAlignment="Center"/>
-                <TextBlock Text="{Binding ElementName=ThumbnailSizeSlider, Path=Value, StringFormat={}{0:0}px}"
-                           VerticalAlignment="Center" Margin="5,0"/>
-            </StackPanel>
+            <ComboBox x:Name="ThumbnailSizeComboBox" 
+                      Width="120"
+                      HorizontalAlignment="Right"
+                      Margin="0,10,10,10"
+                      SelectionChanged="ThumbnailSizeComboBox_SelectionChanged">
+                <ComboBoxItem Content="Small (50x50)" Tag="Small"/>
+                <ComboBoxItem Content="Medium (150x150)" Tag="Medium"/>
+                <ComboBoxItem Content="Large (300x300)" Tag="Large"/>
+            </ComboBox>
 
             <Button Grid.Column="1" Click="OpenSettings_Click" 
                     Width="32" Height="32" 

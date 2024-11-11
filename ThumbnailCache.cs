@@ -8,14 +8,12 @@ namespace FastImageGallery
 {
     public class ThumbnailCache
     {
-        private readonly string _cacheDirectory;
+        private static readonly string _cacheDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "FastImageGallery", "ThumbnailCache");
 
         public ThumbnailCache()
         {
-            _cacheDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "FastImageGallery", "ThumbnailCache");
-            
             Directory.CreateDirectory(_cacheDirectory);
         }
 
@@ -52,6 +50,36 @@ namespace FastImageGallery
             var encoder = new JpegBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(thumbnail));
             encoder.Save(fileStream);
+        }
+
+        public static BitmapSource GenerateThumbnail(string imagePath)
+        {
+            int size = (int)Settings.Current.PreferredThumbnailSize;
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(imagePath);
+            bitmap.DecodePixelWidth = size;
+            bitmap.DecodePixelHeight = size;
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+
+        public static void Clear()
+        {
+            if (Directory.Exists(_cacheDirectory))
+            {
+                try
+                {
+                    Directory.Delete(_cacheDirectory, true);
+                    Directory.CreateDirectory(_cacheDirectory);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError("Error clearing thumbnail cache", ex);
+                }
+            }
         }
     }
 } 

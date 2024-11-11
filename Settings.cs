@@ -48,6 +48,10 @@ namespace FastImageGallery
 
 
 
+        public ThumbnailSize PreferredThumbnailSize { get; set; } = ThumbnailSize.Medium;
+
+
+
         public static Settings Current { get; private set; } = new Settings();
 
 

@@ -52,13 +52,34 @@ namespace FastImageGallery
 
             InitializeImagePreview();
 
-            // Load watched folders from settings
+            // Initialize the thumbnail size dropdown
+            ThumbnailSizeComboBox.SelectedIndex = Settings.Current.PreferredThumbnailSize switch
+            {
+                ThumbnailSize.Small => 0,
+                ThumbnailSize.Medium => 1,
+                ThumbnailSize.Large => 2,
+                _ => 1
+            };
+
+            // Load folders from settings but don't scan yet
             foreach (var folder in Settings.Current.WatchedFolders)
             {
                 _watchedFolders.Add(folder);
-                _ = ScanFolderForImages(folder, CancellationToken.None); // Fire and forget
             }
             Logger.Log($"Loaded {_watchedFolders.Count} watched folders from settings");
+
+            // Subscribe to the Loaded event
+            this.Loaded += MainWindow_Loaded;
+        }
+
+        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Start loading images after the window is shown
+            LoadingProgress.Visibility = Visibility.Visible;
+            foreach (var folder in _watchedFolders)
+            {
+                _ = ScanFolderForImages(folder, CancellationToken.None);
+            }
         }
 
         private async void SelectFolders_Click(object sender, RoutedEventArgs e)
@@ -134,7 +155,9 @@ namespace FastImageGallery
             try
             {
                 Logger.Log($"Starting to load image: {imagePath}");
-                var size = (int)ThumbnailSizeSlider.Value;
+                
+                // Fix the size determination logic
+                var size = (int)Settings.Current.PreferredThumbnailSize;
                 
                 // Load thumbnail on background thread
                 var bitmap = await Task.Run(() => LoadThumbnail(imagePath, size), cancellationToken);
@@ -228,23 +251,6 @@ namespace FastImageGallery
             {
                 Logger.LogError($"Error loading thumbnail for {imagePath}", ex);
                 throw;
-            }
-        }
-
-        private async void ThumbnailSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (!IsLoaded) return;
-            
-            var size = (int)e.NewValue;
-            var currentImages = _images.ToList();
-            _images.Clear();
-
-            foreach (var item in currentImages)
-            {
-                item.Width = size;
-                item.Height = size;
-                item.Thumbnail = await Task.Run(() => LoadThumbnail(item.FilePath, size));
-                _images.Add(item);
             }
         }
 
@@ -442,6 +448,32 @@ namespace FastImageGallery
             if (e.Key == Key.Escape && ModalContainer.Visibility == Visibility.Visible)
             {
                 ClosePreview();
+            }
+        }
+
+        public void RefreshThumbnails()
+        {
+            _images.Clear();
+            LoadingProgress.Visibility = Visibility.Visible;
+            
+            foreach (var folder in _watchedFolders)
+            {
+                _ = ScanFolderForImages(folder, CancellationToken.None);
+            }
+        }
+
+        private void ThumbnailSizeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ThumbnailSizeComboBox.SelectedItem is ComboBoxItem selectedItem)
+            {
+                Settings.Current.PreferredThumbnailSize = Enum.Parse<ThumbnailSize>(selectedItem.Tag.ToString());
+                Settings.Save();
+                
+                // Clear the thumbnail cache to regenerate thumbnails at the new size
+                ThumbnailCache.Clear();
+                
+                // Refresh thumbnails
+                RefreshThumbnails();
             }
         }
     }
