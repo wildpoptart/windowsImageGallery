@@ -21,8 +21,15 @@ using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace FastImageGallery
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window, INotifyPropertyChanged
     {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected virtual void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
         private readonly HashSet<string> _supportedExtensions = new()
         {
             ".jpg", ".jpeg", ".png", ".gif", ".bmp"
@@ -32,10 +39,22 @@ namespace FastImageGallery
         private SettingsWindow? _settingsWindow;
         private CancellationTokenSource? _loadingCancellation;
         private readonly ObservableCollection<string> _watchedFolders = new();
+        private bool _isLoading;
+
+        public bool IsLoading
+        {
+            get => _isLoading;
+            set
+            {
+                _isLoading = value;
+                OnPropertyChanged(nameof(IsLoading));
+            }
+        }
 
         public MainWindow()
         {
             InitializeComponent();
+            DataContext = this;
             Logger.Log("Application starting");
             ImageListView.ItemsSource = _images;
             Logger.Log($"ListView bound to collection. ItemsSource set: {ImageListView.ItemsSource != null}");
@@ -75,7 +94,7 @@ namespace FastImageGallery
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             // Start loading images after the window is shown
-            LoadingProgress.Visibility = Visibility.Visible;
+            IsLoading = true;
             foreach (var folder in _watchedFolders)
             {
                 _ = ScanFolderForImages(folder, CancellationToken.None);
@@ -88,7 +107,7 @@ namespace FastImageGallery
             if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 _images.Clear();
-                LoadingProgress.Visibility = Visibility.Visible;
+                IsLoading = true;
                 
                 _loadingCancellation?.Cancel();
                 _loadingCancellation = new CancellationTokenSource();
@@ -103,50 +122,58 @@ namespace FastImageGallery
                 }
                 finally
                 {
-                    LoadingProgress.Visibility = Visibility.Collapsed;
+                    IsLoading = false;
                 }
             }
         }
 
         private async Task ScanFolderForImages(string folderPath, CancellationToken cancellationToken)
         {
-            List<string> imageFiles;
+            IsLoading = true;
             try
             {
-                imageFiles = Directory.GetFiles(folderPath, "*.*", SearchOption.AllDirectories)
-                    .Where(file => _supportedExtensions.Contains(Path.GetExtension(file).ToLower()))
-                    .ToList();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError($"Error scanning folder: {folderPath}", ex);
-                return;
-            }
-
-            if (imageFiles.Count == 0)
-            {
-                Logger.Log($"No supported images found in folder: {folderPath}");
-                return;
-            }
-
-            LoadingProgress.Maximum = imageFiles.Count;
-            LoadingProgress.Value = 0;
-
-            var batchSize = 10;
-            try
-            {
-                for (int i = 0; i < imageFiles.Count; i += batchSize)
+                List<string> imageFiles;
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    
-                    var batch = imageFiles.Skip(i).Take(batchSize);
-                    var tasks = batch.Select(path => AddImageToGallery(path, cancellationToken));
-                    await Task.WhenAll(tasks);
+                    imageFiles = Directory.GetFiles(folderPath, "*.*", SearchOption.AllDirectories)
+                        .Where(file => _supportedExtensions.Contains(Path.GetExtension(file).ToLower()))
+                        .ToList();
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"Error scanning folder: {folderPath}", ex);
+                    return;
+                }
+
+                if (imageFiles.Count == 0)
+                {
+                    Logger.Log($"No supported images found in folder: {folderPath}");
+                    return;
+                }
+
+                LoadingProgress.Maximum = imageFiles.Count;
+                LoadingProgress.Value = 0;
+
+                var batchSize = 10;
+                try
+                {
+                    for (int i = 0; i < imageFiles.Count; i += batchSize)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        
+                        var batch = imageFiles.Skip(i).Take(batchSize);
+                        var tasks = batch.Select(path => AddImageToGallery(path, cancellationToken));
+                        await Task.WhenAll(tasks);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Logger.LogError($"Error processing images in folder: {folderPath}", ex);
                 }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            finally
             {
-                Logger.LogError($"Error processing images in folder: {folderPath}", ex);
+                IsLoading = false;
             }
         }
 

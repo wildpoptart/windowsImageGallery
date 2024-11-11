@@ -35,8 +35,27 @@
             </Button>
         </Grid>
 
-        <ProgressBar Grid.Row="1" x:Name="LoadingProgress" Height="20" 
-                     Margin="10" Visibility="Collapsed"/>
+        <ProgressBar Grid.Row="1" 
+                     x:Name="LoadingProgress" 
+                     Height="4" 
+                     Margin="0"
+                     IsIndeterminate="True"
+                     VerticalAlignment="Top">
+            <ProgressBar.Style>
+                <Style TargetType="ProgressBar">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Setter Property="Height" Value="2"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsLoading}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Setter Property="Height" Value="0"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ProgressBar.Style>
+        </ProgressBar>
 
         <ScrollViewer Grid.Row="2"
                      HorizontalScrollBarVisibility="Disabled"
