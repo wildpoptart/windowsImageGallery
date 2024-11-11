@@ -9,7 +9,8 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <Grid Margin="10">
+        <!-- Main Content -->
+        <Grid Grid.Row="0" Margin="10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -33,10 +34,10 @@
             </Button>
         </Grid>
 
-        <ProgressBar x:Name="LoadingProgress" Grid.Row="1" Height="20" 
+        <ProgressBar Grid.Row="1" x:Name="LoadingProgress" Height="20" 
                      Margin="10" Visibility="Collapsed"/>
 
-        <ScrollViewer Grid.Row="2" 
+        <ScrollViewer Grid.Row="2"
                      HorizontalScrollBarVisibility="Disabled"
                      VerticalScrollBarVisibility="Auto">
             <ItemsControl x:Name="ImageListView"
@@ -63,5 +64,24 @@
                 </ItemsControl.ItemsPanel>
             </ItemsControl>
         </ScrollViewer>
+
+        <!-- Modal Overlay - Covers entire window -->
+        <Grid Grid.RowSpan="3" Panel.ZIndex="1000" x:Name="ModalContainer" Visibility="Collapsed">
+            <!-- Dark overlay -->
+            <Rectangle x:Name="DarkOverlay"
+                      Fill="Black"
+                      Opacity="0.7"/>
+
+            <!-- Modal Content -->
+            <Border x:Name="ImagePreviewModal"
+                    Background="Transparent"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <Image x:Name="PreviewImage"
+                       Stretch="Uniform"
+                       MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
+                       MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"/>
+            </Border>
+        </Grid>
     </Grid>
 </Window> 

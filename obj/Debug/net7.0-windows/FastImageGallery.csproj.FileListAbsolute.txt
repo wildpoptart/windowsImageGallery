@@ -19,3 +19,7 @@ W:\code\windowsImageGallery\obj\Debug\net7.0-windows\FastImageGallery.genruntime
 W:\code\windowsImageGallery\obj\Debug\net7.0-windows\ref\FastImageGallery.dll
 W:\code\windowsImageGallery\obj\Debug\net7.0-windows\SettingsWindow.baml
 W:\code\windowsImageGallery\obj\Debug\net7.0-windows\SettingsWindow.g.cs
+W:\code\windowsImageGallery\obj\Debug\net7.0-windows\GeneratedInternalTypeHelper.g.cs
+W:\code\windowsImageGallery\obj\Debug\net7.0-windows\FastImageGallery_MarkupCompile.lref
+W:\code\windowsImageGallery\obj\Debug\net7.0-windows\App.baml
+W:\code\windowsImageGallery\obj\Debug\net7.0-windows\FastImageGallery.sourcelink.json

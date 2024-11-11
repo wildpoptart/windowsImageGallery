@@ -16,6 +16,8 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.ComponentModel;
 using System.Windows.Threading;
+using System.Windows.Media.Animation;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace FastImageGallery
 {
@@ -27,9 +29,7 @@ namespace FastImageGallery
         };
         private readonly ThumbnailCache _thumbnailCache = new();
         private readonly ObservableCollection<ImageItem> _images = new();
-        private Window? _previewWindow;
         private SettingsWindow? _settingsWindow;
-        private Popup? _previewPopup;
         private CancellationTokenSource? _loadingCancellation;
 
         public MainWindow()
@@ -48,6 +48,8 @@ namespace FastImageGallery
             {
                 Logger.Log("Warning: ItemsPanel template is null");
             }
+
+            InitializeImagePreview();
         }
 
         private async void SelectFolders_Click(object sender, RoutedEventArgs e)
@@ -242,49 +244,29 @@ namespace FastImageGallery
             if (e.ClickCount == 2 && sender is FrameworkElement element && 
                 element.DataContext is ImageItem imageItem)
             {
-                ShowImagePreview(imageItem.FilePath);
+                ShowPreview(imageItem);
+                e.Handled = true;
             }
         }
 
-        private void ShowImagePreview(string imagePath)
+        private void ShowPreview(ImageItem imageItem)
         {
-            if (_previewPopup != null)
-            {
-                _previewPopup.IsOpen = false;
-            }
+            // Create BitmapImage with better memory handling
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(imageItem.FilePath);
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            
+            PreviewImage.Source = bitmap;
+            
+            // Show the modal container
+            ModalContainer.Visibility = Visibility.Visible;
 
-            var image = new Image
-            {
-                Source = new BitmapImage(new Uri(imagePath)),
-                Stretch = Stretch.Uniform,
-                MaxHeight = ActualHeight * 0.8,
-                MaxWidth = ActualWidth * 0.8
-            };
-
-            var border = new Border
-            {
-                Child = image,
-                Background = System.Windows.Media.Brushes.White,
-                BorderBrush = System.Windows.Media.Brushes.Gray,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(10),
-                Effect = new System.Windows.Media.Effects.DropShadowEffect
-                {
-                    BlurRadius = 10,
-                    ShadowDepth = 5
-                }
-            };
-
-            _previewPopup = new Popup
-            {
-                Child = border,
-                Placement = PlacementMode.Center,
-                PlacementTarget = this,
-                StaysOpen = false,
-                AllowsTransparency = true
-            };
-
-            _previewPopup.IsOpen = true;
+            // Animation for the overlay
+            var fadeIn = new DoubleAnimation(0, 0.7, TimeSpan.FromMilliseconds(200));
+            DarkOverlay.BeginAnimation(OpacityProperty, fadeIn);
         }
 
         private void OpenSettings_Click(object sender, RoutedEventArgs e)
@@ -385,6 +367,34 @@ namespace FastImageGallery
             _loadingCancellation?.Cancel();
             _loadingCancellation?.Dispose();
             base.OnClosing(e);
+        }
+
+        private void InitializeImagePreview()
+        {
+            // Instead of using MainImage, we'll use the image from the clicked item
+            DarkOverlay.MouseLeftButtonDown += (s, e) => ClosePreview();
+            PreviewImage.MouseLeftButtonDown += (s, e) => ClosePreview();
+        }
+
+        private void ClosePreview()
+        {
+            var fadeOut = new DoubleAnimation(0.7, 0, TimeSpan.FromMilliseconds(200));
+            fadeOut.Completed += (s, e) =>
+            {
+                ModalContainer.Visibility = Visibility.Collapsed;
+            };
+            DarkOverlay.BeginAnimation(OpacityProperty, fadeOut);
+        }
+
+        // Add this to handle ESC key to close the preview
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            
+            if (e.Key == Key.Escape && ModalContainer.Visibility == Visibility.Visible)
+            {
+                ClosePreview();
+            }
         }
     }
 
