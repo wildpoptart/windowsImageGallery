@@ -31,6 +31,7 @@ namespace FastImageGallery
         private readonly ObservableCollection<ImageItem> _images = new();
         private SettingsWindow? _settingsWindow;
         private CancellationTokenSource? _loadingCancellation;
+        private readonly ObservableCollection<string> _watchedFolders = new();
 
         public MainWindow()
         {
@@ -50,6 +51,14 @@ namespace FastImageGallery
             }
 
             InitializeImagePreview();
+
+            // Load watched folders from settings
+            foreach (var folder in Settings.Current.WatchedFolders)
+            {
+                _watchedFolders.Add(folder);
+                _ = ScanFolderForImages(folder, CancellationToken.None); // Fire and forget
+            }
+            Logger.Log($"Loaded {_watchedFolders.Count} watched folders from settings");
         }
 
         private async void SelectFolders_Click(object sender, RoutedEventArgs e)
@@ -282,6 +291,13 @@ namespace FastImageGallery
                 {
                     Owner = this
                 };
+                
+                // Initialize the settings window with current folders
+                foreach (var folder in _watchedFolders)
+                {
+                    _settingsWindow.Folders.Add(folder);
+                }
+                
                 _settingsWindow.FolderAdded += OnFolderAdded;
                 _settingsWindow.FolderRemoved += OnFolderRemoved;
                 _settingsWindow.Closed += SettingsWindow_Closed;
@@ -333,6 +349,10 @@ namespace FastImageGallery
             {
                 LoadingProgress.Visibility = Visibility.Collapsed;
             }
+
+            _watchedFolders.Add(folderPath);
+            Settings.Current.WatchedFolders = _watchedFolders.ToList();
+            Settings.Save();
         }
 
         private bool ValidateFolder(string folderPath)
@@ -365,6 +385,10 @@ namespace FastImageGallery
             {
                 _images.Remove(image);
             }
+
+            _watchedFolders.Remove(folderPath);
+            Settings.Current.WatchedFolders = _watchedFolders.ToList();
+            Settings.Save();
         }
 
         protected override void OnClosing(CancelEventArgs e)
