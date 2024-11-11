@@ -260,13 +260,18 @@ namespace FastImageGallery
             bitmap.Freeze();
             
             PreviewImage.Source = bitmap;
+            PreviewImage.Opacity = 0; // Start fully transparent
             
             // Show the modal container
             ModalContainer.Visibility = Visibility.Visible;
 
-            // Animation for the overlay
-            var fadeIn = new DoubleAnimation(0, 0.7, TimeSpan.FromMilliseconds(200));
-            DarkOverlay.BeginAnimation(OpacityProperty, fadeIn);
+            // Create fade in animations
+            var overlayFadeIn = new DoubleAnimation(0, 0.7, TimeSpan.FromMilliseconds(200));
+            var imageFadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
+
+            // Start both animations
+            DarkOverlay.BeginAnimation(OpacityProperty, overlayFadeIn);
+            PreviewImage.BeginAnimation(OpacityProperty, imageFadeIn);
         }
 
         private void OpenSettings_Click(object sender, RoutedEventArgs e)
@@ -378,12 +383,31 @@ namespace FastImageGallery
 
         private void ClosePreview()
         {
+            // Create fade out animation
             var fadeOut = new DoubleAnimation(0.7, 0, TimeSpan.FromMilliseconds(200));
-            fadeOut.Completed += (s, e) =>
+            var imageFadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
+            
+            // When both animations complete, collapse the container
+            var animationsCompleted = 0;
+            EventHandler onAnimationComplete = null;
+            onAnimationComplete = (s, e) =>
             {
-                ModalContainer.Visibility = Visibility.Collapsed;
+                animationsCompleted++;
+                if (animationsCompleted >= 2) // Both animations finished
+                {
+                    ModalContainer.Visibility = Visibility.Collapsed;
+                    // Remove the event handler to prevent memory leaks
+                    fadeOut.Completed -= onAnimationComplete;
+                    imageFadeOut.Completed -= onAnimationComplete;
+                }
             };
+
+            fadeOut.Completed += onAnimationComplete;
+            imageFadeOut.Completed += onAnimationComplete;
+
+            // Start both animations
             DarkOverlay.BeginAnimation(OpacityProperty, fadeOut);
+            PreviewImage.BeginAnimation(OpacityProperty, imageFadeOut);
         }
 
         // Add this to handle ESC key to close the preview
