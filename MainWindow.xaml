@@ -1,114 +1,306 @@
 <Window x:Class="FastImageGallery.MainWindow"
+
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+
         Title="Fast Image Gallery" Height="600" Width="800">
+
     <Grid>
+
         <Grid.RowDefinitions>
+
             <RowDefinition Height="Auto"/>
+
             <RowDefinition Height="Auto"/>
+
             <RowDefinition Height="*"/>
+
         </Grid.RowDefinitions>
 
+
+
         <!-- Main Content -->
+
         <Grid Grid.Row="0" Margin="10">
+
             <Grid.ColumnDefinitions>
+
                 <ColumnDefinition Width="Auto"/>
+
                 <ColumnDefinition Width="*"/>
+
                 <ColumnDefinition Width="Auto"/>
+
             </Grid.ColumnDefinitions>
 
+
+
             <TextBlock x:Name="TotalImagesText"
+
                        Text="Total Images: 0"
+
                        VerticalAlignment="Center"
+
                        Margin="5,0,0,0"/>
 
+
+
             <ComboBox x:Name="ThumbnailSizeComboBox" 
+
                       Grid.Column="1"
+
                       Width="120"
+
                       HorizontalAlignment="Right"
+
                       Margin="0,10,10,10"
+
                       SelectionChanged="ThumbnailSizeComboBox_SelectionChanged">
+
                 <ComboBoxItem Content="Small (50x50)" Tag="Small"/>
+
                 <ComboBoxItem Content="Medium (150x150)" Tag="Medium"/>
+
                 <ComboBoxItem Content="Large (300x300)" Tag="Large"/>
+
             </ComboBox>
 
+
+
             <Button Grid.Column="2" Click="OpenSettings_Click" 
+
                     Width="32" Height="32" 
+
                     ToolTip="Settings">
+
                 <Path Data="M24,13.616v-3.232c-1.651-0.587-2.694-0.752-3.219-2.019v-0.001c-0.527-1.271,0.1-2.134,0.847-3.707l-2.285-2.285c-1.561,0.742-2.433,1.375-3.707,0.847h-0.001c-1.269-0.526-1.435-1.576-2.019-3.219h-3.232c-0.582,1.635-0.749,2.692-2.019,3.219h-0.001c-1.271,0.528-2.132-0.098-3.707-0.847l-2.285,2.285c0.745,1.568,1.375,2.434,0.847,3.707c-0.527,1.271-1.584,1.438-3.219,2.02v3.232c1.632,0.58,2.692,0.749,3.219,2.019c0.53,1.272-0.103,2.142-0.847,3.707l2.285,2.286c1.562-0.743,2.434-1.375,3.707-0.847h0.001c1.27,0.526,1.436,1.579,2.019,3.219h3.232c0.582-1.636,0.75-2.69,2.027-3.222h0.001c1.262-0.524,2.12,0.101,3.698,0.845l2.285-2.285c-0.744-1.563-1.375-2.433-0.848-3.706c0.527-1.271,1.588-1.44,3.221-2.021zm-12,2.384c-2.209,0-4-1.791-4-4s1.791-4,4-4s4,1.791,4,4s-1.791,4-4,4z"
+
                       Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"
+
                       Stretch="Uniform"/>
+
             </Button>
+
         </Grid>
+
+
 
         <ProgressBar Grid.Row="1" 
+
                      x:Name="LoadingProgress" 
+
                      Height="4" 
+
                      Margin="0"
+
                      IsIndeterminate="True"
+
                      VerticalAlignment="Top">
+
             <ProgressBar.Style>
+
                 <Style TargetType="ProgressBar">
+
                     <Style.Triggers>
+
                         <DataTrigger Binding="{Binding IsLoading}" Value="True">
+
                             <Setter Property="Visibility" Value="Visible"/>
+
                             <Setter Property="Height" Value="2"/>
+
                         </DataTrigger>
+
                         <DataTrigger Binding="{Binding IsLoading}" Value="False">
+
                             <Setter Property="Visibility" Value="Collapsed"/>
+
                             <Setter Property="Height" Value="0"/>
+
                         </DataTrigger>
+
                     </Style.Triggers>
+
                 </Style>
+
             </ProgressBar.Style>
+
         </ProgressBar>
 
+
+
         <ScrollViewer Grid.Row="2"
+
                      HorizontalScrollBarVisibility="Disabled"
+
                      VerticalScrollBarVisibility="Auto">
+
             <ItemsControl x:Name="ImageListView"
+
                          VirtualizingPanel.IsVirtualizing="True"
+
                          VirtualizingPanel.VirtualizationMode="Recycling">
+
                 <ItemsControl.ItemTemplate>
+
                     <DataTemplate>
+
                         <Border Margin="5" 
+
                                 Background="White"
+
                                 BorderBrush="LightGray"
+
                                 BorderThickness="1"
+
                                 MouseDown="Image_MouseDown">
+
                             <Image Source="{Binding Thumbnail}" 
+
                                    Width="{Binding Width}" 
+
                                    Height="{Binding Height}"
+
                                    Stretch="Uniform"/>
+
                         </Border>
+
                     </DataTemplate>
+
                 </ItemsControl.ItemTemplate>
+
                 <ItemsControl.ItemsPanel>
+
                     <ItemsPanelTemplate>
+
                         <WrapPanel IsItemsHost="True" />
+
                     </ItemsPanelTemplate>
+
                 </ItemsControl.ItemsPanel>
+
             </ItemsControl>
+
         </ScrollViewer>
 
+
+
         <!-- Modal Overlay - Covers entire window -->
+
         <Grid Grid.RowSpan="3" Panel.ZIndex="1000" x:Name="ModalContainer" Visibility="Collapsed">
+
             <!-- Dark overlay -->
+
             <Rectangle x:Name="DarkOverlay"
+
                       Fill="Black"
+
                       Opacity="0.7"/>
 
+
+
             <!-- Modal Content -->
+
             <Border x:Name="ImagePreviewModal"
+
                     Background="Transparent"
+
                     HorizontalAlignment="Center"
+
                     VerticalAlignment="Center">
-                <Image x:Name="PreviewImage"
-                       Stretch="Uniform"
-                       MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
-                       MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"/>
+
+                <Grid>
+
+                    <Image x:Name="PreviewImage"
+
+                           Stretch="Uniform"
+
+                           MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
+
+                           MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
+
+                           Visibility="Collapsed"/>
+
+                    <MediaElement x:Name="PreviewMedia"
+
+                                  Stretch="Uniform"
+
+                                  LoadedBehavior="Manual"
+
+                                  UnloadedBehavior="Stop"
+
+                                  MediaOpened="PreviewMedia_MediaOpened"
+
+                                  MediaEnded="PreviewMedia_MediaEnded"
+
+                                  MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
+
+                                  MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
+
+                                  Visibility="Collapsed"/>
+
+                    <!-- Media Controls -->
+
+                    <StackPanel x:Name="MediaControls" 
+
+                                Orientation="Horizontal" 
+
+                                HorizontalAlignment="Center" 
+
+                                VerticalAlignment="Bottom"
+
+                                Margin="0,0,0,20"
+
+                                Background="#80000000"
+
+                                Visibility="Collapsed">
+
+                        <Button x:Name="PlayPauseButton" 
+
+                                Content="⏵" 
+
+                                Click="PlayPause_Click"
+
+                                Width="40" 
+
+                                Height="40"
+
+                                Margin="5"/>
+
+                        <Button Content="⏹" 
+
+                                Click="Stop_Click"
+
+                                Width="40" 
+
+                                Height="40"
+
+                                Margin="5"/>
+
+                        <Slider x:Name="VolumeSlider"
+
+                                Width="100"
+
+                                Minimum="0"
+
+                                Maximum="1"
+
+                                Value="0.5"
+
+                                ValueChanged="Volume_Changed"
+
+                                Margin="5"/>
+
+                    </StackPanel>
+
+                </Grid>
+
             </Border>
+
         </Grid>
+
     </Grid>
+
 </Window> 
+
