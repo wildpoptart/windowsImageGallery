@@ -466,14 +466,17 @@ namespace FastImageGallery
         {
             if (ThumbnailSizeComboBox.SelectedItem is ComboBoxItem selectedItem)
             {
-                Settings.Current.PreferredThumbnailSize = Enum.Parse<ThumbnailSize>(selectedItem.Tag.ToString());
-                Settings.Save();
+                var newSize = Enum.Parse<ThumbnailSize>(selectedItem.Tag.ToString());
                 
-                // Clear the thumbnail cache to regenerate thumbnails at the new size
-                ThumbnailCache.Clear();
-                
-                // Refresh thumbnails
-                RefreshThumbnails();
+                // Only refresh if the size actually changed
+                if (newSize != Settings.Current.PreferredThumbnailSize)
+                {
+                    Settings.Current.PreferredThumbnailSize = newSize;
+                    Settings.Save();
+                    
+                    // Just refresh thumbnails without clearing any cache
+                    RefreshThumbnails();
+                }
             }
         }
     }

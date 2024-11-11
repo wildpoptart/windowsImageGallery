@@ -15,14 +15,24 @@ namespace FastImageGallery
         public ThumbnailCache()
         {
             Directory.CreateDirectory(_cacheDirectory);
+            foreach (ThumbnailSize size in Enum.GetValues(typeof(ThumbnailSize)))
+            {
+                Directory.CreateDirectory(GetSizeCacheDirectory(size));
+            }
+        }
+
+        private static string GetSizeCacheDirectory(ThumbnailSize size)
+        {
+            return Path.Combine(_cacheDirectory, size.ToString());
         }
 
         public string GetCachePath(string imagePath, int size)
         {
             using var md5 = MD5.Create();
-            var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(imagePath + size));
+            var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(imagePath));
             var hashString = BitConverter.ToString(hash).Replace("-", "").ToLower();
-            return Path.Combine(_cacheDirectory, $"{hashString}.jpg");
+            var sizeDir = GetSizeCacheDirectory((ThumbnailSize)size);
+            return Path.Combine(sizeDir, $"{hashString}.jpg");
         }
 
         public bool TryGetCachedThumbnail(string imagePath, int size, out BitmapSource? thumbnail)
@@ -46,6 +56,12 @@ namespace FastImageGallery
 
         public void SaveThumbnail(BitmapSource thumbnail, string cachePath)
         {
+            string directory = Path.GetDirectoryName(cachePath);
+            if (!Directory.Exists(directory) && directory != null)
+            {
+                Directory.CreateDirectory(directory);
+            }
+
             using var fileStream = File.Create(cachePath);
             var encoder = new JpegBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(thumbnail));
@@ -66,7 +82,25 @@ namespace FastImageGallery
             return bitmap;
         }
 
-        public static void Clear()
+        public static void Clear(ThumbnailSize size)
+        {
+            string sizeDirectory = GetSizeCacheDirectory(size);
+            if (Directory.Exists(sizeDirectory))
+            {
+                try
+                {
+                    Directory.Delete(sizeDirectory, true);
+                    Directory.CreateDirectory(sizeDirectory);
+                    Logger.Log($"Cleared thumbnail cache for size: {size}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"Error clearing thumbnail cache for size {size}", ex);
+                }
+            }
+        }
+
+        public static void ClearAll()
         {
             if (Directory.Exists(_cacheDirectory))
             {
@@ -74,10 +108,15 @@ namespace FastImageGallery
                 {
                     Directory.Delete(_cacheDirectory, true);
                     Directory.CreateDirectory(_cacheDirectory);
+                    foreach (ThumbnailSize size in Enum.GetValues(typeof(ThumbnailSize)))
+                    {
+                        Directory.CreateDirectory(GetSizeCacheDirectory(size));
+                    }
+                    Logger.Log("Cleared all thumbnail caches");
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogError("Error clearing thumbnail cache", ex);
+                    Logger.LogError("Error clearing all thumbnail caches", ex);
                 }
             }
         }
