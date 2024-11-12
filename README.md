@@ -4,7 +4,7 @@ A Windows desktop application built with WPF (.NET).
 
 ## Overview
 
-This application provides a graphical user interface with a main window and settings functionality. 
+This application provides a graphical user interface with a main window and settings functionality.
 
 ## Features
 
@@ -36,7 +36,3 @@ This application provides a graphical user interface with a main window and sett
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
-
-## License
-
-[Choose an appropriate license] 
