@@ -90,6 +90,13 @@ Background="White"
 BorderBrush="LightGray"
 BorderThickness="1"
 MouseDown="Image_MouseDown">
+<Border.ContextMenu>
+<ContextMenu>
+<MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click"/>
+<MenuItem Header="Copy" Click="CopyImage_Click"/>
+<MenuItem Header="Delete" Click="DeleteImage_Click"/>
+</ContextMenu>
+</Border.ContextMenu>
 <Image Source="{Binding Thumbnail}" 
 Width="{Binding Width}" 
 Height="{Binding Height}"
@@ -120,16 +127,32 @@ VerticalAlignment="Center">
 Stretch="Uniform"
 MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
 MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
-Visibility="Collapsed"/>
+Visibility="Collapsed">
+    <Image.ContextMenu>
+        <ContextMenu>
+            <MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click"/>
+            <MenuItem Header="Copy" Click="CopyImage_Click"/>
+            <MenuItem Header="Delete" Click="DeleteImage_Click"/>
+        </ContextMenu>
+    </Image.ContextMenu>
+</Image>
 <MediaElement x:Name="PreviewMedia"
-Stretch="Uniform"
-LoadedBehavior="Manual"
-UnloadedBehavior="Stop"
-MediaOpened="PreviewMedia_MediaOpened"
-MediaEnded="PreviewMedia_MediaEnded"
-MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
-MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
-Visibility="Collapsed"/>
+    Stretch="Uniform"
+    LoadedBehavior="Manual"
+    UnloadedBehavior="Stop"
+    MediaOpened="PreviewMedia_MediaOpened"
+    MediaEnded="PreviewMedia_MediaEnded"
+    MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
+    MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ScaleConverter}, ConverterParameter=0.8}"
+    Visibility="Collapsed">
+    <MediaElement.ContextMenu>
+        <ContextMenu>
+            <MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click"/>
+            <MenuItem Header="Copy" Click="CopyImage_Click"/>
+            <MenuItem Header="Delete" Click="DeleteImage_Click"/>
+        </ContextMenu>
+    </MediaElement.ContextMenu>
+</MediaElement>
 <!-- Media Controls -->
 <StackPanel x:Name="MediaControls" 
 Orientation="Horizontal" 

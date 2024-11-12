@@ -590,6 +590,73 @@ namespace FastImageGallery
                public int Height { get; set; }
                public bool IsGif => Path.GetExtension(FilePath).ToLower() == ".gif";
           }
+          private void ShowInExplorer_Click(object sender, RoutedEventArgs e)
+          {
+               if (sender is MenuItem menuItem && menuItem.DataContext is ImageItem imageItem)
+               {
+                    try
+                    {
+                         var argument = $"/select,\"{imageItem.FilePath}\"";
+                         System.Diagnostics.Process.Start("explorer.exe", argument);
+                    }
+                    catch (Exception ex)
+                    {
+                         Logger.LogError($"Failed to open explorer for {imageItem.FilePath}", ex);
+                    }
+               }
+          }
+          private void CopyImage_Click(object sender, RoutedEventArgs e)
+          {
+               if (sender is MenuItem menuItem && menuItem.DataContext is ImageItem imageItem)
+               {
+                    try
+                    {
+                         var files = new string[] { imageItem.FilePath };
+                         var dataObject = new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, files);
+                         System.Windows.Clipboard.SetDataObject(dataObject);
+                    }
+                    catch (Exception ex)
+                    {
+                         Logger.LogError($"Failed to copy {imageItem.FilePath}", ex);
+                    }
+               }
+          }
+          private void DeleteImage_Click(object sender, RoutedEventArgs e)
+          {
+               if (sender is MenuItem menuItem && menuItem.DataContext is ImageItem imageItem)
+               {
+                    var result = System.Windows.MessageBox.Show(
+                         $"Are you sure you want to delete this file?\n{imageItem.FilePath}",
+                         "Confirm Delete",
+                         MessageBoxButton.YesNo,
+                         MessageBoxImage.Warning);
+
+                    if (result == MessageBoxResult.Yes)
+                    {
+                         try
+                         {
+                              File.Delete(imageItem.FilePath);
+                              _images.Remove(imageItem);
+                              TotalImages = _images.Count;
+                              
+                              // If we're in preview mode, close it
+                              if (ModalContainer.Visibility == Visibility.Visible)
+                              {
+                                   ClosePreview();
+                              }
+                         }
+                         catch (Exception ex)
+                         {
+                              Logger.LogError($"Failed to delete {imageItem.FilePath}", ex);
+                              System.Windows.MessageBox.Show(
+                                   "Failed to delete the file. Make sure you have the necessary permissions.",
+                                   "Error",
+                                   MessageBoxButton.OK,
+                                   MessageBoxImage.Error);
+                         }
+                    }
+               }
+          }
      }
      public class ImageItem
      {
