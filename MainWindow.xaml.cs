@@ -48,6 +48,7 @@ namespace FastImageGallery
           private int _totalImages;
           private bool _isAscending = true;
           private string _currentSortOption = "By Name";
+          private ImageItem? _currentPreviewItem;
           public bool IsLoading
           {
                get => _isLoading;
@@ -281,6 +282,8 @@ namespace FastImageGallery
           }
           private void ShowPreview(ImageItem imageItem)
           {
+               _currentPreviewItem = imageItem;
+               
                if (imageItem.IsGif)
                {
                     // For GIFs, use MediaElement to support animation
@@ -291,6 +294,9 @@ namespace FastImageGallery
                     PreviewMedia.Opacity = 0;
                     var mediaFadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
                     PreviewMedia.BeginAnimation(OpacityProperty, mediaFadeIn);
+                    
+                    // Set DataContext for MediaElement context menu
+                    PreviewMedia.DataContext = imageItem;
                }
                else
                {
@@ -307,6 +313,9 @@ namespace FastImageGallery
                     PreviewImage.Opacity = 0;
                     var imageFadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
                     PreviewImage.BeginAnimation(OpacityProperty, imageFadeIn);
+                    
+                    // Set DataContext for Image context menu
+                    PreviewImage.DataContext = imageItem;
                }
                // Show the modal container
                ModalContainer.Visibility = Visibility.Visible;
@@ -437,6 +446,8 @@ namespace FastImageGallery
           }
           private void ClosePreview()
           {
+               _currentPreviewItem = null;
+               
                // Stop any playing media
                PreviewMedia.Stop();
                PreviewMedia.Source = null;
