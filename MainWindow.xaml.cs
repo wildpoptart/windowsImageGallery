@@ -192,18 +192,16 @@ namespace FastImageGallery
                try
                {
                     Logger.Log($"Starting to load image: {imagePath}");
-                    // Fix the size determination logic
                     var size = (int)Settings.Current.PreferredThumbnailSize;
-                    // Load thumbnail on background thread
                     var bitmap = await Task.Run(() => LoadThumbnail(imagePath, size), cancellationToken);
                     Logger.Log($"Thumbnail loaded successfully for: {imagePath}");
-                    // Create a frozen (thread-safe) copy of the bitmap
+
                     BitmapSource frozenBitmap = await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                         bitmap.Freeze(); // Make the bitmap thread-safe
+                         bitmap.Freeze();
                          return bitmap;
                     });
-                    // Now use the frozen bitmap in UI operations
+
                     await Dispatcher.InvokeAsync(() =>
                     {
                          try
@@ -214,8 +212,8 @@ namespace FastImageGallery
                                    {
                                         FilePath = imagePath,
                                         Thumbnail = frozenBitmap,
-                                        Width = size,
-                                        Height = size
+                                        Width = frozenBitmap.PixelWidth,
+                                        Height = frozenBitmap.PixelHeight
                                    };
                                    _images.Add(imageItem);
                                    TotalImages = _images.Count;
@@ -601,8 +599,8 @@ namespace FastImageGallery
           {
                public required string FilePath { get; set; }
                public required BitmapSource Thumbnail { get; set; }
-               public int Width { get; set; }
-               public int Height { get; set; }
+               public double Width { get; set; }
+               public double Height { get; set; }
                public bool IsGif => Path.GetExtension(FilePath).ToLower() == ".gif";
           }
           private void ShowInExplorer_Click(object sender, RoutedEventArgs e)
@@ -696,8 +694,8 @@ namespace FastImageGallery
      {
           public required string FilePath { get; set; }
           public required BitmapSource Thumbnail { get; set; }
-          public int Width { get; set; }
-          public int Height { get; set; }
+          public double Width { get; set; }
+          public double Height { get; set; }
           public bool IsGif => Path.GetExtension(FilePath).ToLower() == ".gif";
      }
 }

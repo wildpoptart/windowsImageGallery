@@ -85,28 +85,26 @@ VirtualizingPanel.IsVirtualizing="True"
 VirtualizingPanel.VirtualizationMode="Recycling">
 <ItemsControl.ItemTemplate>
 <DataTemplate>
-<Border Margin="5" 
-Background="White"
-BorderBrush="LightGray"
-BorderThickness="1"
-MouseDown="Image_MouseDown">
-<Border.ContextMenu>
-<ContextMenu>
-<MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click"/>
-<MenuItem Header="Copy" Click="CopyImage_Click"/>
-<MenuItem Header="Delete" Click="DeleteImage_Click"/>
-</ContextMenu>
-</Border.ContextMenu>
-<Image Source="{Binding Thumbnail}" 
-Width="{Binding Width}" 
-Height="{Binding Height}"
-Stretch="Uniform"/>
-</Border>
+<Viewbox Width="{Binding Width}" Height="{Binding Height}">
+    <Grid Width="{Binding Width}" Height="{Binding Height}">
+        <Image Source="{Binding Thumbnail}"
+               RenderOptions.BitmapScalingMode="HighQuality"
+               MouseDown="Image_MouseDown">
+            <Image.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click"/>
+                    <MenuItem Header="Copy" Click="CopyImage_Click"/>
+                    <MenuItem Header="Delete" Click="DeleteImage_Click"/>
+                </ContextMenu>
+            </Image.ContextMenu>
+        </Image>
+    </Grid>
+</Viewbox>
 </DataTemplate>
 </ItemsControl.ItemTemplate>
 <ItemsControl.ItemsPanel>
 <ItemsPanelTemplate>
-<WrapPanel IsItemsHost="True" />
+<WrapPanel/>
 </ItemsPanelTemplate>
 </ItemsControl.ItemsPanel>
 </ItemsControl>
