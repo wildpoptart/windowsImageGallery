@@ -18,6 +18,8 @@ using System.ComponentModel;
 using System.Windows.Threading;
 using System.Windows.Media.Animation;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using CommunityToolkit.Mvvm.Messaging;
+using FastImageGallery.Messages;
 namespace FastImageGallery
 {
      public static class MediaElementExtensions
@@ -103,6 +105,10 @@ namespace FastImageGallery
                this.Loaded += MainWindow_Loaded;
                SortingComboBox.SelectionChanged += SortingComboBox_SelectionChanged;
                SortingComboBox.SelectedIndex = 0;
+               WeakReferenceMessenger.Default.Register<RegenerateThumbnailsMessage>(this, (r, m) =>
+               {
+                    RegenerateThumbnails();
+               });
           }
           private void MainWindow_Loaded(object sender, RoutedEventArgs e)
           {
@@ -232,38 +238,36 @@ namespace FastImageGallery
           {
                try
                {
-                    if (_thumbnailCache.TryGetCachedThumbnail(imagePath, size, out var cached) && cached != null)
+                    bool preserveAspectRatio = Properties.Settings.Default.PreserveAspectRatio;
+                    
+                    // First try to get from cache
+                    BitmapSource? cached;
+                    if (_thumbnailCache.TryGetCachedThumbnail(imagePath, size, preserveAspectRatio, out cached) && cached != null)
                     {
+                         Logger.Log($"Using cached thumbnail for {imagePath}");
                          cached.Freeze();
                          return cached;
                     }
-                    using var stream = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    BitmapSource thumbnail = Application.Current.Dispatcher.Invoke(() =>
-                    {
-                         var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.OnDemand);
-                         if (decoder.Frames.Count == 0)
-                              throw new InvalidOperationException("Image file contains no frames.");
-                         var frame = decoder.Frames[0].Thumbnail ?? decoder.Frames[0];
-                         frame.Freeze();
-                         return frame;
-                    });
-                    var transformed = Application.Current.Dispatcher.Invoke(() =>
-                    {
-                         var result = new TransformedBitmap(thumbnail, new ScaleTransform(
-     size / (double)thumbnail.PixelWidth,
-     size / (double)thumbnail.PixelHeight));
-                         result.Freeze();
-                         return result;
-                    });
+
+                    Logger.Log($"Generating new thumbnail for {imagePath}");
+                    
+                    // If not in cache, generate new thumbnail
+                    var thumbnail = ThumbnailCache.GenerateThumbnail(imagePath);
+                    thumbnail.Freeze();
+
+                    // Save to cache
                     try
                     {
-                         _thumbnailCache.SaveThumbnail(transformed, _thumbnailCache.GetCachePath(imagePath, size));
+                         string cachePath = _thumbnailCache.GetCachePath(imagePath, size, preserveAspectRatio);
+                         Logger.Log($"Saving thumbnail to cache: {cachePath}");
+                         _thumbnailCache.SaveThumbnail(thumbnail, cachePath);
                     }
                     catch (Exception ex)
                     {
                          Logger.LogError($"Failed to cache thumbnail: {imagePath}", ex);
                     }
-                    return transformed;
+
+                    return thumbnail;
                }
                catch (Exception ex)
                {
@@ -666,6 +670,25 @@ namespace FastImageGallery
                                    MessageBoxImage.Error);
                          }
                     }
+               }
+          }
+          private async void RegenerateThumbnails()
+          {
+               IsLoading = true;
+               try
+               {
+                    // Don't clear the cache, just clear the images collection
+                    _images.Clear();
+                    
+                    // Rescan all folders - this will use cached thumbnails if they exist
+                    foreach (var folder in _watchedFolders)
+                    {
+                         await ScanFolderForImages(folder, CancellationToken.None);
+                    }
+               }
+               finally
+               {
+                    IsLoading = false;
                }
           }
      }

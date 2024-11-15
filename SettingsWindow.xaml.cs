@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Forms;
 using System;
+using CommunityToolkit.Mvvm.Messaging;
+using FastImageGallery.Messages;
 
 namespace FastImageGallery
 {
@@ -16,6 +18,7 @@ namespace FastImageGallery
         {
             InitializeComponent();
             FoldersList.ItemsSource = Folders;
+            PreserveAspectRatioCheckbox.IsChecked = Properties.Settings.Default.PreserveAspectRatio;
         }
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -50,6 +53,15 @@ namespace FastImageGallery
                 Folders.Remove(folder);
                 FolderRemoved?.Invoke(folder);
             }
+        }
+
+        private void PreserveAspectRatio_Changed(object sender, RoutedEventArgs e)
+        {
+            Properties.Settings.Default.PreserveAspectRatio = PreserveAspectRatioCheckbox.IsChecked ?? false;
+            Properties.Settings.Default.Save();
+            
+            // Send a message to regenerate thumbnails
+            WeakReferenceMessenger.Default.Send(new RegenerateThumbnailsMessage());
         }
     }
 } 

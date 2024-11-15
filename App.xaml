@@ -2,8 +2,10 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:FastImageGallery"
+             xmlns:converters="clr-namespace:FastImageGallery.Converters"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
         <local:ScaleConverter x:Key="ScaleConverter"/>
+        <converters:AspectRatioConverter x:Key="AspectRatioConverter"/>
     </Application.Resources>
 </Application> 

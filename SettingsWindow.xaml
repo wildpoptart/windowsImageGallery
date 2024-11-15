@@ -8,6 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <StackPanel>
@@ -32,5 +33,14 @@
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
+
+        <StackPanel Grid.Row="2" Margin="0,20,0,0">
+            <TextBlock Text="Display Options" FontWeight="Bold" Margin="0,0,0,10"/>
+            <CheckBox Content="Preserve Image Aspect Ratio" 
+                      x:Name="PreserveAspectRatioCheckbox"
+                      Checked="PreserveAspectRatio_Changed"
+                      Unchecked="PreserveAspectRatio_Changed"
+                      Margin="0,0,0,5"/>
+        </StackPanel>
     </Grid>
 </Window> 
