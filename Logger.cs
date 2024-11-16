@@ -9,6 +9,8 @@ namespace FastImageGallery
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "FastImageGallery", "log.txt");
 
+        public static bool IsEnabled { get; set; } = false;
+
         static Logger()
         {
             try
@@ -29,6 +31,8 @@ namespace FastImageGallery
 
         public static void Log(string message)
         {
+            if (!IsEnabled) return;
+            
             try
             {
                 var logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}";
@@ -43,6 +47,8 @@ namespace FastImageGallery
 
         public static void LogError(string message, Exception ex)
         {
+            if (!IsEnabled) return;
+            
             Log($"ERROR: {message}");
             Log($"Exception: {ex.GetType().Name}: {ex.Message}");
             Log($"Stack Trace: {ex.StackTrace}");

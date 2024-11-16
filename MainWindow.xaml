@@ -81,6 +81,16 @@ Margin="0,0,10,0">
         <ComboBoxItem Content="Date"/>
     </ComboBox>
 </StackPanel>
+<StackPanel Grid.Column="4" 
+            Orientation="Horizontal" 
+            Margin="10,0">
+    <CheckBox x:Name="EnableLoggingCheckbox" 
+              Content="Enable Logging" 
+              IsChecked="False"
+              VerticalAlignment="Center"
+              Checked="EnableLoggingCheckbox_Checked"
+              Unchecked="EnableLoggingCheckbox_Checked"/>
+</StackPanel>
 <ComboBox x:Name="ThumbnailSizeComboBox" 
 Grid.Column="5"
 Width="120"

@@ -111,6 +111,8 @@ namespace FastImageGallery
                
                // Add this line to initialize the preview handlers
                InitializeImagePreview();
+               // Disable logging by default
+               Logger.IsEnabled = false;
           }
           private void MainWindow_Loaded(object sender, RoutedEventArgs e)
           {
@@ -831,6 +833,10 @@ namespace FastImageGallery
                image.DataContext = item;
                
                return image;
+          }
+          private void EnableLoggingCheckbox_Checked(object sender, RoutedEventArgs e)
+          {
+               Logger.IsEnabled = EnableLoggingCheckbox.IsChecked ?? false;
           }
      }
      public class ImageItem
