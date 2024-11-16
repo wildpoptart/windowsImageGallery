@@ -108,6 +108,9 @@ namespace FastImageGallery
                
                // Initialize with no organization
                OrganizeGallery();
+               
+               // Add this line to initialize the preview handlers
+               InitializeImagePreview();
           }
           private void MainWindow_Loaded(object sender, RoutedEventArgs e)
           {
@@ -484,9 +487,13 @@ namespace FastImageGallery
           }
           private void InitializeImagePreview()
           {
-               // Instead of using MainImage, we'll use the image from the clicked item
-               DarkOverlay.MouseLeftButtonDown += (s, e) => ClosePreview();
-               PreviewImage.MouseLeftButtonDown += (s, e) => ClosePreview();
+               DarkOverlay.MouseLeftButtonDown += ClosePreview;
+               PreviewImage.MouseLeftButtonDown += ClosePreview;
+          }
+          private void ClosePreview(object sender, MouseButtonEventArgs e)
+          {
+               ClosePreview();
+               e.Handled = true;
           }
           private void ClosePreview()
           {
@@ -495,23 +502,16 @@ namespace FastImageGallery
                // Stop any playing media
                PreviewMedia.Stop();
                PreviewMedia.Source = null;
+
                // Create fade out animations
                var fadeOut = new DoubleAnimation(0.7, 0, TimeSpan.FromMilliseconds(200));
                var contentFadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
-               var animationsCompleted = 0;
-               EventHandler onAnimationComplete = null;
-               onAnimationComplete = (s, e) =>
-               {
-                    animationsCompleted++;
-                    if (animationsCompleted >= 2)
-                    {
-                         ModalContainer.Visibility = Visibility.Collapsed;
-                         fadeOut.Completed -= onAnimationComplete;
-                         contentFadeOut.Completed -= onAnimationComplete;
-                    }
+
+               fadeOut.Completed += (s, args) => {
+                    ModalContainer.Visibility = Visibility.Collapsed;
+                    PreviewImage.Source = null; // Clear the image source
                };
-               fadeOut.Completed += onAnimationComplete;
-               contentFadeOut.Completed += onAnimationComplete;
+
                DarkOverlay.BeginAnimation(OpacityProperty, fadeOut);
                if (PreviewImage.Visibility == Visibility.Visible)
                {
@@ -816,12 +816,6 @@ namespace FastImageGallery
           }
           private Image CreateImageElement(ImageItem item)
           {
-               // Return existing image element if we have one
-               if (_imageElements.TryGetValue(item.FilePath, out var existingImage))
-               {
-                    return existingImage;
-               }
-
                var size = (int)Settings.Current.PreferredThumbnailSize;
                var image = new Image
                {
@@ -829,7 +823,8 @@ namespace FastImageGallery
                     Width = size,
                     Height = size,
                     Margin = new Thickness(2),
-                    Stretch = Properties.Settings.Default.PreserveAspectRatio ? Stretch.Uniform : Stretch.Fill
+                    Stretch = Properties.Settings.Default.PreserveAspectRatio ? Stretch.Uniform : Stretch.Fill,
+                    Style = (Style)FindResource("ImageStyle")  // Apply the hover style
                };
                
                image.MouseDown += Image_MouseDown;
