@@ -48,8 +48,8 @@ namespace FastImageGallery
           private readonly ObservableCollection<string> _watchedFolders = new();
           private bool _isLoading;
           private int _totalImages;
-          private bool _isAscending = true;
-          private string _currentSortOption = "By Name";
+          private bool _isAscending = false;
+          private string _currentSortOption = "By Date";
           private ImageItem? _currentPreviewItem;
           public bool IsLoading
           {
@@ -104,7 +104,7 @@ namespace FastImageGallery
                // Subscribe to the Loaded event
                this.Loaded += MainWindow_Loaded;
                SortingComboBox.SelectionChanged += SortingComboBox_SelectionChanged;
-               SortingComboBox.SelectedIndex = 0;
+               SortingComboBox.SelectedIndex = 1;
                WeakReferenceMessenger.Default.Register<RegenerateThumbnailsMessage>(this, (r, m) =>
                {
                     RegenerateThumbnails();
@@ -215,7 +215,10 @@ namespace FastImageGallery
                                         Width = frozenBitmap.PixelWidth,
                                         Height = frozenBitmap.PixelHeight
                                    };
-                                   _images.Add(imageItem);
+
+                                   // Find the correct position to insert the new item
+                                   int insertIndex = FindSortedInsertIndex(imageItem);
+                                   _images.Insert(insertIndex, imageItem);
                                    TotalImages = _images.Count;
                                    LoadingProgress.Value++;
                                    Logger.Log($"Added image to gallery. FilePath: {imageItem.FilePath}");
@@ -231,6 +234,35 @@ namespace FastImageGallery
                {
                     Logger.LogError($"Error in AddImageToGallery for {imagePath}", ex);
                }
+          }
+          private int FindSortedInsertIndex(ImageItem newItem)
+          {
+               if (_images.Count == 0) return 0;
+
+               var comparer = _currentSortOption switch
+               {
+                    "By Date" => _isAscending
+                         ? (Func<ImageItem, ImageItem, int>)((a, b) => 
+                             new FileInfo(a.FilePath).LastWriteTime.CompareTo(new FileInfo(b.FilePath).LastWriteTime))
+                         : (a, b) => 
+                             new FileInfo(b.FilePath).LastWriteTime.CompareTo(new FileInfo(a.FilePath).LastWriteTime),
+                             
+                    "By Name" or _ => _isAscending
+                         ? (a, b) => 
+                             string.Compare(Path.GetFileName(a.FilePath), Path.GetFileName(b.FilePath))
+                         : (a, b) => 
+                             string.Compare(Path.GetFileName(b.FilePath), Path.GetFileName(a.FilePath))
+               };
+
+               for (int i = 0; i < _images.Count; i++)
+               {
+                    if (comparer(newItem, _images[i]) < 0)
+                    {
+                         return i;
+                    }
+               }
+
+               return _images.Count;
           }
           private BitmapSource LoadThumbnail(string imagePath, int size)
           {
