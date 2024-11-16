@@ -57,11 +57,17 @@ namespace FastImageGallery
 
         private void PreserveAspectRatio_Changed(object sender, RoutedEventArgs e)
         {
-            Properties.Settings.Default.PreserveAspectRatio = PreserveAspectRatioCheckbox.IsChecked ?? false;
-            Properties.Settings.Default.Save();
+            bool newValue = PreserveAspectRatioCheckbox.IsChecked ?? false;
             
-            // Send a message to regenerate thumbnails
-            WeakReferenceMessenger.Default.Send(new RegenerateThumbnailsMessage());
+            // Only update if the value actually changed
+            if (newValue != Properties.Settings.Default.PreserveAspectRatio)
+            {
+                Properties.Settings.Default.PreserveAspectRatio = newValue;
+                Properties.Settings.Default.Save();
+                
+                // Only send regenerate message if the value changed
+                WeakReferenceMessenger.Default.Send(new RegenerateThumbnailsMessage());
+            }
         }
     }
 } 
