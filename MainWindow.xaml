@@ -14,6 +14,7 @@ Title="Fast Image Gallery" Height="600" Width="800">
 <ColumnDefinition Width="Auto"/>
 <ColumnDefinition Width="Auto"/>
 <ColumnDefinition Width="Auto"/>
+<ColumnDefinition Width="Auto"/>
 <ColumnDefinition Width="*"/>
 <ColumnDefinition Width="Auto"/>
 <ColumnDefinition Width="Auto"/>
@@ -33,13 +34,27 @@ SelectedIndex="1">
 <Button x:Name="SortDirectionButton" 
 Grid.Column="2"
 Width="30" 
-Click="SortDirectionButton_Click">
+Click="SortDirectionButton_Click"
+Margin="0,0,10,0">
 <TextBlock x:Name="SortDirectionIcon" 
 Text="↓" 
 FontSize="14"/>
 </Button>
+<StackPanel Grid.Column="3" 
+Orientation="Horizontal" 
+Margin="0,0,10,0">
+    <TextBlock Text="Organize by:" 
+        VerticalAlignment="Center" 
+        Margin="0,0,5,0"/>
+    <ComboBox x:Name="OrganizeByComboBox" 
+        Width="100" 
+        SelectionChanged="OrganizeByComboBox_SelectionChanged">
+        <ComboBoxItem Content="None"/>
+        <ComboBoxItem Content="Date"/>
+    </ComboBox>
+</StackPanel>
 <ComboBox x:Name="ThumbnailSizeComboBox" 
-Grid.Column="4"
+Grid.Column="5"
 Width="120"
 Margin="0,0,10,0"
 SelectionChanged="ThumbnailSizeComboBox_SelectionChanged">
@@ -47,7 +62,7 @@ SelectionChanged="ThumbnailSizeComboBox_SelectionChanged">
 <ComboBoxItem Content="Medium (150x150)" Tag="Medium"/>
 <ComboBoxItem Content="Large (300x300)" Tag="Large"/>
 </ComboBox>
-<Button Grid.Column="5" 
+<Button Grid.Column="6" 
 Click="OpenSettings_Click" 
 Width="32" 
 Height="32" 
@@ -78,68 +93,13 @@ VerticalAlignment="Top">
 </Style>
 </ProgressBar.Style>
 </ProgressBar>
-<ScrollViewer Grid.Row="2"
-HorizontalScrollBarVisibility="Disabled"
-VerticalScrollBarVisibility="Auto">
-<ItemsControl x:Name="ImageListView"
-VirtualizingPanel.IsVirtualizing="True"
-VirtualizingPanel.VirtualizationMode="Recycling">
-<ItemsControl.ItemTemplate>
-<DataTemplate>
-<Viewbox Width="{Binding Width}" Height="{Binding Height}">
-    <Grid Width="{Binding Width}" Height="{Binding Height}">
-        <Image Source="{Binding Thumbnail}"
-               RenderOptions.BitmapScalingMode="HighQuality"
-               MouseDown="Image_MouseDown">
-            <Image.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click"/>
-                    <MenuItem Header="Copy" Click="CopyImage_Click"/>
-                    <MenuItem Header="Delete" Click="DeleteImage_Click"/>
-                </ContextMenu>
-            </Image.ContextMenu>
-        </Image>
-        <Rectangle Fill="White" IsHitTestVisible="False">
-            <Rectangle.Style>
-                <Style TargetType="Rectangle">
-                    <Setter Property="Opacity" Value="0"/>
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Grid}, Path=IsMouseOver}" Value="True">
-                            <DataTrigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation 
-                                            Storyboard.TargetProperty="Opacity"
-                                            To="0.3" 
-                                            Duration="0:0:0.1"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </DataTrigger.EnterActions>
-                            <DataTrigger.ExitActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation 
-                                            Storyboard.TargetProperty="Opacity"
-                                            To="0" 
-                                            Duration="0:0:0.1"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </DataTrigger.ExitActions>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </Rectangle.Style>
-        </Rectangle>
-    </Grid>
-</Viewbox>
-</DataTemplate>
-</ItemsControl.ItemTemplate>
-<ItemsControl.ItemsPanel>
-<ItemsPanelTemplate>
-<WrapPanel/>
-</ItemsPanelTemplate>
-</ItemsControl.ItemsPanel>
-</ItemsControl>
+<ScrollViewer Grid.Row="2" 
+              VerticalScrollBarVisibility="Auto" 
+              HorizontalScrollBarVisibility="Disabled">
+    <StackPanel x:Name="GalleryContainer" 
+                Margin="10,5">
+        <!-- Groups will be added here dynamically -->
+    </StackPanel>
 </ScrollViewer>
 <!-- Modal Overlay - Covers entire window -->
 <Grid Grid.RowSpan="3" Panel.ZIndex="1000" x:Name="ModalContainer" Visibility="Collapsed">

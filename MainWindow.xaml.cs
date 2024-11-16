@@ -20,6 +20,8 @@ using System.Windows.Media.Animation;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using CommunityToolkit.Mvvm.Messaging;
 using FastImageGallery.Messages;
+using PhotoOrganizer.Controls;
+using PhotoOrganizer.Models;
 namespace FastImageGallery
 {
      public static class MediaElementExtensions
@@ -51,6 +53,7 @@ namespace FastImageGallery
           private bool _isAscending = false;
           private string _currentSortOption = "By Date";
           private ImageItem? _currentPreviewItem;
+          private OrganizationType currentOrganization = OrganizationType.None;
           public bool IsLoading
           {
                get => _isLoading;
@@ -75,18 +78,7 @@ namespace FastImageGallery
                InitializeComponent();
                DataContext = this;
                Logger.Log("Application starting");
-               ImageListView.ItemsSource = _images;
-               Logger.Log($"ListView bound to collection. ItemsSource set: {ImageListView.ItemsSource != null}");
-               if (ImageListView.ItemsPanel != null)
-               {
-                    Logger.Log($"ItemsPanel template type: {ImageListView.ItemsPanel.GetType().Name}");
-                    Logger.Log($"ItemsPanel visual tree: {ImageListView.ItemsPanel}");
-               }
-               else
-               {
-                    Logger.Log("Warning: ItemsPanel template is null");
-               }
-               InitializeImagePreview();
+               
                // Initialize the thumbnail size dropdown
                ThumbnailSizeComboBox.SelectedIndex = Settings.Current.PreferredThumbnailSize switch
                {
@@ -95,20 +87,26 @@ namespace FastImageGallery
                     ThumbnailSize.Large => 2,
                     _ => 1
                };
+               
                // Load folders from settings but don't scan yet
                foreach (var folder in Settings.Current.WatchedFolders)
                {
                     _watchedFolders.Add(folder);
                }
                Logger.Log($"Loaded {_watchedFolders.Count} watched folders from settings");
+               
                // Subscribe to the Loaded event
                this.Loaded += MainWindow_Loaded;
                SortingComboBox.SelectionChanged += SortingComboBox_SelectionChanged;
                SortingComboBox.SelectedIndex = 1;
+               
                WeakReferenceMessenger.Default.Register<RegenerateThumbnailsMessage>(this, (r, m) =>
                {
                     RegenerateThumbnails();
                });
+               
+               // Initialize with no organization
+               OrganizeGallery();
           }
           private void MainWindow_Loaded(object sender, RoutedEventArgs e)
           {
@@ -212,8 +210,8 @@ namespace FastImageGallery
                                    {
                                         FilePath = imagePath,
                                         Thumbnail = frozenBitmap,
-                                        Width = frozenBitmap.PixelWidth,
-                                        Height = frozenBitmap.PixelHeight
+                                        Width = size,
+                                        Height = size
                                    };
 
                                    // Find the correct position to insert the new item
@@ -221,6 +219,10 @@ namespace FastImageGallery
                                    _images.Insert(insertIndex, imageItem);
                                    TotalImages = _images.Count;
                                    LoadingProgress.Value++;
+                                   
+                                   // Reorganize the gallery after adding the image
+                                   OrganizeGallery();
+                                   
                                    Logger.Log($"Added image to gallery. FilePath: {imageItem.FilePath}");
                               }
                          }
@@ -707,19 +709,105 @@ namespace FastImageGallery
                IsLoading = true;
                try
                {
-                    // Don't clear the cache, just clear the images collection
                     _images.Clear();
                     
-                    // Rescan all folders - this will use cached thumbnails if they exist
                     foreach (var folder in _watchedFolders)
                     {
                          await ScanFolderForImages(folder, CancellationToken.None);
                     }
+                    
+                    // Reorganize after all thumbnails are regenerated
+                    OrganizeGallery();
                }
                finally
                {
                     IsLoading = false;
                }
+          }
+          private void OrganizeByComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+          {
+               var selectedIndex = OrganizeByComboBox.SelectedIndex;
+               currentOrganization = (OrganizationType)selectedIndex;
+               OrganizeGallery();
+          }
+          private void OrganizeGallery()
+          {
+               GalleryContainer.Children.Clear();
+
+               if (currentOrganization == OrganizationType.None)
+               {
+                    var wrapPanel = new WrapPanel();
+                    foreach (var item in _images)
+                    {
+                         var image = CreateImageElement(item);
+                         wrapPanel.Children.Add(image);
+                    }
+                    GalleryContainer.Children.Add(wrapPanel);
+                    return;
+               }
+
+               var groupedByYear = _images
+                   .GroupBy(t => File.GetLastWriteTime(t.FilePath).Year)
+                   .OrderByDescending(g => g.Key);
+
+               foreach (var yearGroup in groupedByYear)
+               {
+                    var yearPanel = new CollapsibleGroup
+                    {
+                        Header = yearGroup.Key.ToString(),
+                        Margin = new Thickness(0, 0, 0, 5)
+                    };
+
+                    var yearContent = new StackPanel();
+                    
+                    var monthGroups = yearGroup
+                        .GroupBy(t => File.GetLastWriteTime(t.FilePath).Month)
+                        .OrderByDescending(g => g.Key);
+
+                    foreach (var monthGroup in monthGroups)
+                    {
+                        var monthPanel = new CollapsibleGroup
+                        {
+                            Header = new DateTime(yearGroup.Key, monthGroup.Key, 1).ToString("MMMM"),
+                            Margin = new Thickness(0, 0, 0, 5)
+                        };
+
+                        var monthGallery = new WrapPanel
+                        {
+                            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                            Width = double.NaN  // Auto width
+                        };
+
+                        foreach (var item in monthGroup.OrderByDescending(t => File.GetLastWriteTime(t.FilePath)))
+                        {
+                            var image = CreateImageElement(item);
+                            monthGallery.Children.Add(image);
+                        }
+
+                        monthPanel.Content = monthGallery;
+                        yearContent.Children.Add(monthPanel);
+                    }
+
+                    yearPanel.Content = yearContent;
+                    GalleryContainer.Children.Add(yearPanel);
+               }
+          }
+          private Image CreateImageElement(ImageItem item)
+          {
+               var size = (int)Settings.Current.PreferredThumbnailSize;
+               var image = new Image
+               {
+                    Source = item.Thumbnail,
+                    Width = size,
+                    Height = size,
+                    Margin = new Thickness(2),
+                    Stretch = Properties.Settings.Default.PreserveAspectRatio ? Stretch.Uniform : Stretch.Fill
+               };
+               
+               image.MouseDown += Image_MouseDown;
+               image.DataContext = item;
+               
+               return image;
           }
      }
      public class ImageItem
