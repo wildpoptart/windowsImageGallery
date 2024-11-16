@@ -54,6 +54,7 @@ namespace FastImageGallery
           private string _currentSortOption = "By Date";
           private ImageItem? _currentPreviewItem;
           private OrganizationType currentOrganization = OrganizationType.None;
+          private readonly Dictionary<string, Image> _imageElements = new();
           public bool IsLoading
           {
                get => _isLoading;
@@ -214,14 +215,20 @@ namespace FastImageGallery
                                         Height = size
                                    };
 
-                                   // Find the correct position to insert the new item
                                    int insertIndex = FindSortedInsertIndex(imageItem);
                                    _images.Insert(insertIndex, imageItem);
                                    TotalImages = _images.Count;
                                    LoadingProgress.Value++;
                                    
-                                   // Reorganize the gallery after adding the image
-                                   OrganizeGallery();
+                                   // Create the image element once and store it
+                                   var image = CreateImageElement(imageItem);
+                                   _imageElements[imagePath] = image;
+                                   
+                                   // Only reorganize gallery periodically or when batch is complete
+                                   if (_images.Count % 20 == 0 || LoadingProgress.Value == LoadingProgress.Maximum)
+                                   {
+                                        OrganizeGallery();
+                                   }
                                    
                                    Logger.Log($"Added image to gallery. FilePath: {imageItem.FilePath}");
                               }
@@ -462,6 +469,7 @@ namespace FastImageGallery
                foreach (var image in imagesToRemove)
                {
                     _images.Remove(image);
+                    _imageElements.Remove(image.FilePath);
                }
                TotalImages = _images.Count;
                _watchedFolders.Remove(folderPath);
@@ -739,8 +747,16 @@ namespace FastImageGallery
                     var wrapPanel = new WrapPanel();
                     foreach (var item in _images)
                     {
-                         var image = CreateImageElement(item);
-                         wrapPanel.Children.Add(image);
+                         // Reuse existing image element
+                         if (_imageElements.TryGetValue(item.FilePath, out var image))
+                         {
+                              // Remove from old parent if needed
+                              if (image.Parent is System.Windows.Controls.Panel oldParent)
+                              {
+                                   oldParent.Children.Remove(image);
+                              }
+                              wrapPanel.Children.Add(image);
+                         }
                     }
                     GalleryContainer.Children.Add(wrapPanel);
                     return;
@@ -780,8 +796,14 @@ namespace FastImageGallery
 
                         foreach (var item in monthGroup.OrderByDescending(t => File.GetLastWriteTime(t.FilePath)))
                         {
-                            var image = CreateImageElement(item);
-                            monthGallery.Children.Add(image);
+                            if (_imageElements.TryGetValue(item.FilePath, out var image))
+                            {
+                                if (image.Parent is System.Windows.Controls.Panel oldParent)
+                                {
+                                    oldParent.Children.Remove(image);
+                                }
+                                monthGallery.Children.Add(image);
+                            }
                         }
 
                         monthPanel.Content = monthGallery;
@@ -794,6 +816,12 @@ namespace FastImageGallery
           }
           private Image CreateImageElement(ImageItem item)
           {
+               // Return existing image element if we have one
+               if (_imageElements.TryGetValue(item.FilePath, out var existingImage))
+               {
+                    return existingImage;
+               }
+
                var size = (int)Settings.Current.PreferredThumbnailSize;
                var image = new Image
                {
