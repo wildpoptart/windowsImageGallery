@@ -40,6 +40,7 @@ namespace FastImageGallery
 
         public event EventHandler? MediaOpened;
         public event EventHandler? MediaEnded;
+        public event EventHandler? PlaybackEnded;
 
         public bool IsPlaying => _isPlaying;
         public TimeSpan Position { get => _position; set => SeekTo(value); }
@@ -166,6 +167,9 @@ namespace FastImageGallery
                     Source = _writeableBitmap;
                     MediaOpened?.Invoke(this, EventArgs.Empty);
                 });
+
+                // Read and display the first frame immediately
+                await ReadAndDisplayFrame();
             }
             catch (Exception ex)
             {
@@ -173,6 +177,63 @@ namespace FastImageGallery
                 CleanupFFmpeg();
                 throw;
             }
+        }
+
+        private async Task<bool> ReadAndDisplayFrame()
+        {
+            var frameSize = _width * _height * 4;
+            var buffer = new byte[frameSize];
+            var readBuffer = new byte[32768];
+            var currentPosition = 0;
+
+            while (currentPosition < frameSize)
+            {
+                var bytesRead = await _ffmpegInput.ReadAsync(
+                    readBuffer, 
+                    0, 
+                    Math.Min(readBuffer.Length, frameSize - currentPosition));
+
+                if (bytesRead == 0)
+                {
+                    return false;
+                }
+
+                Buffer.BlockCopy(readBuffer, 0, buffer, currentPosition, bytesRead);
+                currentPosition += bytesRead;
+            }
+
+            if (currentPosition >= frameSize)
+            {
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    try
+                    {
+                        _writeableBitmap?.Lock();
+                        
+                        unsafe
+                        {
+                            fixed (byte* sourcePtr = buffer)
+                            {
+                                Buffer.MemoryCopy(
+                                    sourcePtr,
+                                    (void*)_writeableBitmap.BackBuffer,
+                                    frameSize,
+                                    frameSize);
+                            }
+                        }
+
+                        _writeableBitmap?.AddDirtyRect(new Int32Rect(0, 0, _width, _height));
+                    }
+                    finally
+                    {
+                        _writeableBitmap?.Unlock();
+                    }
+                }, DispatcherPriority.Render);
+
+                return true;
+            }
+
+            return false;
         }
 
         public void Play()
@@ -222,10 +283,6 @@ namespace FastImageGallery
 
         private async Task PlaybackLoop()
         {
-            var frameSize = _width * _height * 4; // 4 bytes per pixel (BGRA)
-            var buffer = new byte[frameSize];
-            var readBuffer = new byte[32768]; // Smaller buffer for reading chunks
-            var currentPosition = 0;
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
             try
@@ -234,59 +291,22 @@ namespace FastImageGallery
                 {
                     sw.Restart();
 
-                    // Read in chunks until we have a full frame
-                    while (currentPosition < frameSize)
+                    if (!await ReadAndDisplayFrame())
                     {
-                        var bytesRead = await _ffmpegInput.ReadAsync(
-                            readBuffer, 
-                            0, 
-                            Math.Min(readBuffer.Length, frameSize - currentPosition));
-
-                        if (bytesRead == 0)
-                        {
-                            Logger.Log("End of stream reached");
-                            MediaEnded?.Invoke(this, EventArgs.Empty);
-                            SeekToStart();
-                            currentPosition = 0;
-                            break;
-                        }
-
-                        Buffer.BlockCopy(readBuffer, 0, buffer, currentPosition, bytesRead);
-                        currentPosition += bytesRead;
-                    }
-
-                    if (currentPosition >= frameSize)
-                    {
+                        Logger.Log("End of stream reached");
+                        _isPlaying = false;
+                        
+                        // Use Dispatcher for UI updates
                         await Application.Current.Dispatcher.InvokeAsync(() =>
                         {
-                            try
-                            {
-                                _writeableBitmap?.Lock();
-                                
-                                unsafe
-                                {
-                                    fixed (byte* sourcePtr = buffer)
-                                    {
-                                        Buffer.MemoryCopy(
-                                            sourcePtr,
-                                            (void*)_writeableBitmap.BackBuffer,
-                                            frameSize,
-                                            frameSize);
-                                    }
-                                }
-
-                                _writeableBitmap?.AddDirtyRect(new Int32Rect(0, 0, _width, _height));
-                            }
-                            finally
-                            {
-                                _writeableBitmap?.Unlock();
-                            }
-                        }, DispatcherPriority.Render);
-
-                        currentPosition = 0;
+                            MediaEnded?.Invoke(this, EventArgs.Empty);
+                            PlaybackEnded?.Invoke(this, EventArgs.Empty);
+                        });
+                        
+                        SeekToStart();
+                        break;
                     }
 
-                    // Frame timing using actual video framerate
                     var elapsed = sw.Elapsed;
                     if (elapsed < _frameDelay)
                     {

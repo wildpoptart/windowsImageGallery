@@ -354,11 +354,17 @@ namespace FastImageGallery
                {
                     try
                     {
-                         // Show video controls
                          PreviewMedia.Visibility = Visibility.Visible;
                          MediaControls.Visibility = Visibility.Visible;
                          
-                         // Load video using FFmpeg
+                         PreviewMedia.PlaybackEnded += async (s, e) => 
+                         {
+                              await Dispatcher.InvokeAsync(() =>
+                              {
+                                   PlayPauseButton.Content = "⏵";  // Reset to play button when video ends
+                              });
+                         };
+                         
                          await PreviewMedia.LoadVideoAsync(imageItem.FilePath);
                          PlayPauseButton.Content = "⏵";
                          
