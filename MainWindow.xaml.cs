@@ -18,11 +18,13 @@ using System.ComponentModel;
 using System.Windows.Threading;
 using System.Windows.Media.Animation;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using System.Diagnostics;
+using MessageBox = System.Windows.MessageBox;
+using Clipboard = System.Windows.Clipboard;
 using CommunityToolkit.Mvvm.Messaging;
 using FastImageGallery.Messages;
 using PhotoOrganizer.Controls;
 using PhotoOrganizer.Models;
-using MessageBox = System.Windows.MessageBox;
 namespace FastImageGallery
 {
      public static class MediaElementExtensions
@@ -190,6 +192,9 @@ namespace FastImageGallery
                               var tasks = batch.Select(path => AddImageToGallery(path, cancellationToken));
                               await Task.WhenAll(tasks);
                          }
+
+                         // After all images are loaded, generate video thumbnails
+                         await ThumbnailCache.GenerateVideoThumbnailsAsync(_images);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
@@ -210,56 +215,37 @@ namespace FastImageGallery
                     var bitmap = await Task.Run(() => LoadThumbnail(imagePath, size), cancellationToken);
                     Logger.Log($"Thumbnail loaded successfully for: {imagePath}");
 
-                    BitmapSource frozenBitmap = await Application.Current.Dispatcher.InvokeAsync(() =>
+                    var newItem = new ImageItem
                     {
-                         bitmap.Freeze();
-                         return bitmap;
+                         FilePath = imagePath,
+                         Thumbnail = bitmap,
+                         Width = bitmap.PixelWidth,
+                         Height = bitmap.PixelHeight
+                    };
+
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                         var insertIndex = FindInsertIndex(newItem);
+                         _images.Insert(insertIndex, newItem);
+                         TotalImages++;
+                         LoadingProgress.Value++;
+
+                         // Create and add the image element to the gallery
+                         var image = CreateImageElement(newItem);
+                         _imageElements[imagePath] = image;
+                         
+                         // Add to GalleryContainer
+                         GalleryContainer.Children.Add(image);
+
+                         UpdateTotalImagesText();
                     });
-
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                         try
-                         {
-                              if (!cancellationToken.IsCancellationRequested)
-                              {
-                                   var imageItem = new ImageItem
-                                   {
-                                        FilePath = imagePath,
-                                        Thumbnail = frozenBitmap,
-                                        Width = size,
-                                        Height = size
-                                   };
-
-                                   int insertIndex = FindSortedInsertIndex(imageItem);
-                                   _images.Insert(insertIndex, imageItem);
-                                   TotalImages = _images.Count;
-                                   LoadingProgress.Value++;
-                                   
-                                   // Create the image element once and store it
-                                   var image = CreateImageElement(imageItem);
-                                   _imageElements[imagePath] = image;
-                                   
-                                   // Only reorganize gallery periodically or when batch is complete
-                                   if (_images.Count % 20 == 0 || LoadingProgress.Value == LoadingProgress.Maximum)
-                                   {
-                                        OrganizeGallery();
-                                   }
-                                   
-                                   Logger.Log($"Added image to gallery. FilePath: {imageItem.FilePath}");
-                              }
-                         }
-                         catch (Exception ex)
-                         {
-                              Logger.LogError($"Failed to add image to UI collection: {imagePath}", ex);
-                         }
-                    }, DispatcherPriority.Background, cancellationToken);
                }
-               catch (Exception ex) when (ex is not OperationCanceledException)
+               catch (Exception ex)
                {
-                    Logger.LogError($"Error in AddImageToGallery for {imagePath}", ex);
+                    Logger.LogError($"Error adding image to gallery: {imagePath}", ex);
                }
           }
-          private int FindSortedInsertIndex(ImageItem newItem)
+          private int FindInsertIndex(ImageItem newItem)
           {
                if (_images.Count == 0) return 0;
 
@@ -312,7 +298,7 @@ namespace FastImageGallery
                     // Save to cache
                     try
                     {
-                         string cachePath = _thumbnailCache.GetCachePath(imagePath, size, preserveAspectRatio);
+                         string cachePath = ThumbnailCache.GetCachePath(imagePath, size, preserveAspectRatio);
                          Logger.Log($"Saving thumbnail to cache: {cachePath}");
                          _thumbnailCache.SaveThumbnail(thumbnail, cachePath);
                     }
@@ -604,13 +590,28 @@ namespace FastImageGallery
           }
           public void RefreshThumbnails()
           {
+               // Clear both collections
                _images.Clear();
+               _imageElements.Clear();
+               GalleryContainer.Children.Clear();  // Clear the UI container
                TotalImages = 0;
+
                LoadingProgress.Visibility = Visibility.Visible;
+               
+               // Store current sort settings
+               var currentSortOption = _currentSortOption;
+               var isAscending = _isAscending;
+
+               // Load all images
                foreach (var folder in _watchedFolders)
                {
                     _ = ScanFolderForImages(folder, CancellationToken.None);
                }
+
+               // Restore sort settings and apply sorting
+               _currentSortOption = currentSortOption;
+               _isAscending = isAscending;
+               ApplySorting();
           }
           private void ThumbnailSizeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
           {
@@ -623,7 +624,7 @@ namespace FastImageGallery
                     {
                          Settings.Current.PreferredThumbnailSize = newSize;
                          Settings.Save();
-                         RefreshThumbnails();
+                         RefreshThumbnails();  // This will now properly clear everything
                     }
                }
           }
@@ -719,187 +720,17 @@ namespace FastImageGallery
                          break;
                }
 
+               // Clear and rebuild both collections
                _images.Clear();
+               _imageElements.Clear();
+               GalleryContainer.Children.Clear();
+
                foreach (var item in sortedItems)
                {
                     _images.Add(item);
-               }
-          }
-          public class ImageItem
-          {
-               public required string FilePath { get; set; }
-               public required BitmapSource Thumbnail { get; set; }
-               public double Width { get; set; }
-               public double Height { get; set; }
-               public bool IsGif => Path.GetExtension(FilePath).ToLower() == ".gif";
-          }
-          private void ShowInExplorer_Click(object sender, RoutedEventArgs e)
-          {
-               if (sender is MenuItem menuItem && menuItem.DataContext is ImageItem imageItem)
-               {
-                    try
-                    {
-                         var argument = $"/select,\"{imageItem.FilePath}\"";
-                         System.Diagnostics.Process.Start("explorer.exe", argument);
-                    }
-                    catch (Exception ex)
-                    {
-                         Logger.LogError($"Failed to open explorer for {imageItem.FilePath}", ex);
-                    }
-               }
-          }
-          private void CopyImage_Click(object sender, RoutedEventArgs e)
-          {
-               if (sender is MenuItem menuItem && menuItem.DataContext is ImageItem imageItem)
-               {
-                    try
-                    {
-                         var files = new string[] { imageItem.FilePath };
-                         var dataObject = new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, files);
-                         System.Windows.Clipboard.SetDataObject(dataObject);
-                    }
-                    catch (Exception ex)
-                    {
-                         Logger.LogError($"Failed to copy {imageItem.FilePath}", ex);
-                    }
-               }
-          }
-          private void DeleteImage_Click(object sender, RoutedEventArgs e)
-          {
-               if (sender is MenuItem menuItem && menuItem.DataContext is ImageItem imageItem)
-               {
-                    var result = MessageBox.Show(
-                         $"Are you sure you want to delete this file?\n{imageItem.FilePath}",
-                         "Confirm Delete",
-                         MessageBoxButton.YesNo,
-                         MessageBoxImage.Warning);
-
-                    if (result == MessageBoxResult.Yes)
-                    {
-                         try
-                         {
-                              File.Delete(imageItem.FilePath);
-                              _images.Remove(imageItem);
-                              TotalImages = _images.Count;
-                              
-                              // If we're in preview mode, close it
-                              if (ModalContainer.Visibility == Visibility.Visible)
-                              {
-                                   ClosePreview();
-                              }
-                         }
-                         catch (Exception ex)
-                         {
-                              Logger.LogError($"Failed to delete {imageItem.FilePath}", ex);
-                              MessageBox.Show(
-                                   "Failed to delete the file. Make sure you have the necessary permissions.",
-                                   "Error",
-                                   MessageBoxButton.OK,
-                                   MessageBoxImage.Error);
-                         }
-                    }
-               }
-          }
-          private async void RegenerateThumbnails()
-          {
-               IsLoading = true;
-               try
-               {
-                    _images.Clear();
-                    
-                    foreach (var folder in _watchedFolders)
-                    {
-                         await ScanFolderForImages(folder, CancellationToken.None);
-                    }
-                    
-                    // Reorganize after all thumbnails are regenerated
-                    OrganizeGallery();
-               }
-               finally
-               {
-                    IsLoading = false;
-               }
-          }
-          private void OrganizeByComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-          {
-               var selectedIndex = OrganizeByComboBox.SelectedIndex;
-               currentOrganization = (OrganizationType)selectedIndex;
-               OrganizeGallery();
-          }
-          private void OrganizeGallery()
-          {
-               GalleryContainer.Children.Clear();
-
-               if (currentOrganization == OrganizationType.None)
-               {
-                    var wrapPanel = new WrapPanel();
-                    foreach (var item in _images)
-                    {
-                         // Reuse existing image element
-                         if (_imageElements.TryGetValue(item.FilePath, out var image))
-                         {
-                              // Remove from old parent if needed
-                              if (image.Parent is System.Windows.Controls.Panel oldParent)
-                              {
-                                   oldParent.Children.Remove(image);
-                              }
-                              wrapPanel.Children.Add(image);
-                         }
-                    }
-                    GalleryContainer.Children.Add(wrapPanel);
-                    return;
-               }
-
-               var groupedByYear = _images
-                   .GroupBy(t => File.GetLastWriteTime(t.FilePath).Year)
-                   .OrderByDescending(g => g.Key);
-
-               foreach (var yearGroup in groupedByYear)
-               {
-                    var yearPanel = new CollapsibleGroup
-                    {
-                        Header = yearGroup.Key.ToString(),
-                        Margin = new Thickness(0, 0, 0, 5)
-                    };
-
-                    var yearContent = new StackPanel();
-                    
-                    var monthGroups = yearGroup
-                        .GroupBy(t => File.GetLastWriteTime(t.FilePath).Month)
-                        .OrderByDescending(g => g.Key);
-
-                    foreach (var monthGroup in monthGroups)
-                    {
-                        var monthPanel = new CollapsibleGroup
-                        {
-                            Header = new DateTime(yearGroup.Key, monthGroup.Key, 1).ToString("MMMM"),
-                            Margin = new Thickness(0, 0, 0, 5)
-                        };
-
-                        var monthGallery = new WrapPanel
-                        {
-                            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-                            Width = double.NaN  // Auto width
-                        };
-
-                        foreach (var item in monthGroup.OrderByDescending(t => File.GetLastWriteTime(t.FilePath)))
-                        {
-                            if (_imageElements.TryGetValue(item.FilePath, out var image))
-                            {
-                                if (image.Parent is System.Windows.Controls.Panel oldParent)
-                                {
-                                    oldParent.Children.Remove(image);
-                                }
-                                monthGallery.Children.Add(image);
-                            }
-                        }
-
-                        monthPanel.Content = monthGallery;
-                        yearContent.Children.Add(monthPanel);
-                    }
-
-                    yearPanel.Content = yearContent;
-                    GalleryContainer.Children.Add(yearPanel);
+                    var imageElement = CreateImageElement(item);
+                    _imageElements[item.FilePath] = imageElement;
+                    GalleryContainer.Children.Add(imageElement);
                }
           }
           private Image CreateImageElement(ImageItem item)
@@ -915,7 +746,20 @@ namespace FastImageGallery
                     Style = (Style)FindResource("ImageStyle")  // Apply the hover style
                };
                
+               // Add mouse handlers
                image.MouseDown += Image_MouseDown;
+               
+               // Add context menu
+               image.ContextMenu = new ContextMenu
+               {
+                    Items = 
+                    {
+                         new MenuItem { Header = "Show in Explorer", Command = new RelayCommand(() => ShowInExplorer_Click(item)) },
+                         new MenuItem { Header = "Copy", Command = new RelayCommand(() => CopyImage_Click(item)) },
+                         new MenuItem { Header = "Delete", Command = new RelayCommand(() => DeleteImage_Click(item)) }
+                    }
+               };
+               
                image.DataContext = item;
                
                return image;
@@ -924,13 +768,235 @@ namespace FastImageGallery
           {
                Logger.IsEnabled = EnableLoggingCheckbox.IsChecked ?? false;
           }
-     }
-     public class ImageItem
-     {
-          public required string FilePath { get; set; }
-          public required BitmapSource Thumbnail { get; set; }
-          public double Width { get; set; }
-          public double Height { get; set; }
-          public bool IsGif => Path.GetExtension(FilePath).ToLower() == ".gif";
+          private void OrganizeByComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+          {
+               if (OrganizeByComboBox.SelectedItem is ComboBoxItem selectedItem)
+               {
+                    var organizationType = selectedItem.Content.ToString() switch
+                    {
+                         "Date" => OrganizationType.ByDate,
+                         _ => OrganizationType.None
+                    };
+                    
+                    if (currentOrganization != organizationType)
+                    {
+                         currentOrganization = organizationType;
+                         OrganizeGallery();
+                    }
+               }
+          }
+          private void OrganizeGallery()
+          {
+               if (_images.Count == 0) return;
+
+               var items = _images.ToList();
+               
+               // First sort the items
+               IOrderedEnumerable<ImageItem> sortedItems;
+               switch (_currentSortOption)
+               {
+                    case "By Date":
+                         sortedItems = _isAscending 
+                              ? items.OrderBy(img => new FileInfo(img.FilePath).LastWriteTime)
+                              : items.OrderByDescending(img => new FileInfo(img.FilePath).LastWriteTime);
+                         break;
+                         
+                    case "By Name":
+                    default:
+                         sortedItems = _isAscending 
+                              ? items.OrderBy(img => Path.GetFileName(img.FilePath))
+                              : items.OrderByDescending(img => Path.GetFileName(img.FilePath));
+                         break;
+               }
+
+               // Clear existing items
+               _images.Clear();
+               _imageElements.Clear();
+               GalleryContainer.Children.Clear();
+
+               if (currentOrganization == OrganizationType.None)
+               {
+                    // No organization, just add all items to main container
+                    var mainPanel = new WrapPanel();
+                    foreach (var item in sortedItems)
+                    {
+                         _images.Add(item);
+                         var imageElement = CreateImageElement(item);
+                         _imageElements[item.FilePath] = imageElement;
+                         mainPanel.Children.Add(imageElement);
+                    }
+                    GalleryContainer.Children.Add(mainPanel);
+               }
+               else
+               {
+                    // Group by year and month
+                    var yearGroups = sortedItems
+                         .GroupBy(img => new FileInfo(img.FilePath).LastWriteTime.Year)
+                         .OrderByDescending(g => g.Key);
+
+                    foreach (var yearGroup in yearGroups)
+                    {
+                         var yearPanel = new StackPanel();
+
+                         // Create collapsible group for each year
+                         var yearCollapsibleGroup = new CollapsibleGroup
+                         {
+                              Header = new TextBlock
+                              {
+                                   Text = yearGroup.Key.ToString(),
+                                   FontWeight = FontWeights.Bold,
+                                   FontSize = 20,
+                                   Margin = new Thickness(5, 5, 5, 5)
+                              },
+                              Content = yearPanel,
+                              Margin = new Thickness(5, 5, 5, 5)
+                         };
+
+                         var monthGroups = yearGroup
+                              .GroupBy(img => new FileInfo(img.FilePath).LastWriteTime.Month)
+                              .OrderByDescending(m => m.Key);
+
+                         foreach (var monthGroup in monthGroups)
+                         {
+                              // Create collapsible group for each month
+                              var monthPanel = new WrapPanel
+                              {
+                                   Margin = new Thickness(20, 5, 5, 15)
+                              };
+
+                              foreach (var item in monthGroup)
+                              {
+                                   _images.Add(item);
+                                   var imageElement = CreateImageElement(item);
+                                   _imageElements[item.FilePath] = imageElement;
+                                   monthPanel.Children.Add(imageElement);
+                              }
+
+                              var monthName = new DateTime(yearGroup.Key, monthGroup.Key, 1).ToString("MMMM");
+                              var monthCollapsibleGroup = new CollapsibleGroup
+                              {
+                                   Header = new TextBlock
+                                   {
+                                        Text = monthName,
+                                        FontWeight = FontWeights.SemiBold,
+                                        FontSize = 16,
+                                        Margin = new Thickness(5, 5, 5, 5)
+                                   },
+                                   Content = monthPanel,
+                                   Margin = new Thickness(15, 0, 0, 0)
+                              };
+
+                              yearPanel.Children.Add(monthCollapsibleGroup);
+                         }
+
+                         GalleryContainer.Children.Add(yearCollapsibleGroup);
+                    }
+               }
+          }
+          private void RegenerateThumbnails()
+          {
+               RefreshThumbnails();
+          }
+          private void ShowInExplorer_Click(ImageItem item)
+          {
+               var path = item.FilePath;
+               if (File.Exists(path))
+               {
+                    Process.Start("explorer.exe", $"/select,\"{path}\"");
+               }
+          }
+          private void CopyImage_Click(ImageItem item)
+          {
+               try
+               {
+                    Clipboard.SetText(item.FilePath);
+                    MessageBox.Show("File path copied to clipboard", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+               }
+               catch (Exception ex)
+               {
+                    Logger.LogError("Error copying file path", ex);
+                    MessageBox.Show("Error copying file path", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+               }
+          }
+          private void DeleteImage_Click(ImageItem item)
+          {
+               var result = MessageBox.Show(
+                    "Are you sure you want to delete this file?",
+                    "Confirm Delete",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning
+               );
+
+               if (result == MessageBoxResult.Yes)
+               {
+                    try
+                    {
+                         File.Delete(item.FilePath);
+                         _images.Remove(item);
+                         if (_imageElements.ContainsKey(item.FilePath))
+                         {
+                              GalleryContainer.Children.Remove(_imageElements[item.FilePath]);
+                              _imageElements.Remove(item.FilePath);
+                         }
+                         TotalImages--;
+                         
+                         if (item == _currentPreviewItem)
+                         {
+                              ClosePreview();
+                         }
+                    }
+                    catch (Exception ex)
+                    {
+                         Logger.LogError("Error deleting file", ex);
+                         MessageBox.Show("Error deleting file", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+               }
+          }
+          private class RelayCommand : ICommand
+          {
+               private readonly Action _execute;
+               
+               public RelayCommand(Action execute) => _execute = execute;
+               
+               public event EventHandler? CanExecuteChanged;
+               public bool CanExecute(object? parameter) => true;
+               public void Execute(object? parameter) => _execute();
+          }
+          private void ShowInExplorer_Click_Handler(object sender, RoutedEventArgs e)
+          {
+               if (sender is MenuItem menuItem && 
+                   menuItem.DataContext is ImageItem item)
+               {
+                    ShowInExplorer_Click(item);
+               }
+               else if (_currentPreviewItem != null)
+               {
+                    ShowInExplorer_Click(_currentPreviewItem);
+               }
+          }
+          private void CopyImage_Click_Handler(object sender, RoutedEventArgs e)
+          {
+               if (sender is MenuItem menuItem && 
+                   menuItem.DataContext is ImageItem item)
+               {
+                    CopyImage_Click(item);
+               }
+               else if (_currentPreviewItem != null)
+               {
+                    CopyImage_Click(_currentPreviewItem);
+               }
+          }
+          private void DeleteImage_Click_Handler(object sender, RoutedEventArgs e)
+          {
+               if (sender is MenuItem menuItem && 
+                   menuItem.DataContext is ImageItem item)
+               {
+                    DeleteImage_Click(item);
+               }
+               else if (_currentPreviewItem != null)
+               {
+                    DeleteImage_Click(_currentPreviewItem);
+               }
+          }
      }
 }

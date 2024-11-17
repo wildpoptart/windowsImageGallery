@@ -136,9 +136,7 @@ VerticalAlignment="Top">
               VerticalScrollBarVisibility="Auto" 
               HorizontalScrollBarVisibility="Disabled">
     <StackPanel x:Name="GalleryContainer" 
-                Margin="10,5">
-        <!-- Groups will be added here dynamically -->
-    </StackPanel>
+                Margin="10,5"/>
 </ScrollViewer>
 <!-- Modal Overlay - Covers entire window -->
 <Grid Grid.RowSpan="3" Panel.ZIndex="1000" x:Name="ModalContainer" Visibility="Collapsed">
@@ -161,9 +159,9 @@ VerticalAlignment="Top">
                    Visibility="Collapsed">
                 <Image.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click"/>
-                        <MenuItem Header="Copy" Click="CopyImage_Click"/>
-                        <MenuItem Header="Delete" Click="DeleteImage_Click"/>
+                        <MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click_Handler"/>
+                        <MenuItem Header="Copy" Click="CopyImage_Click_Handler"/>
+                        <MenuItem Header="Delete" Click="DeleteImage_Click_Handler"/>
                     </ContextMenu>
                 </Image.ContextMenu>
             </Image>
@@ -174,9 +172,9 @@ VerticalAlignment="Top">
                     Visibility="Collapsed">
                 <local:FFmpegPlayer.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click"/>
-                        <MenuItem Header="Copy" Click="CopyImage_Click"/>
-                        <MenuItem Header="Delete" Click="DeleteImage_Click"/>
+                        <MenuItem Header="Show in Explorer" Click="ShowInExplorer_Click_Handler"/>
+                        <MenuItem Header="Copy" Click="CopyImage_Click_Handler"/>
+                        <MenuItem Header="Delete" Click="DeleteImage_Click_Handler"/>
                     </ContextMenu>
                 </local:FFmpegPlayer.ContextMenu>
             </local:FFmpegPlayer>

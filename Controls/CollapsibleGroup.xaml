@@ -7,19 +7,20 @@
                 Background="Transparent"
                 BorderThickness="0"
                 HorizontalContentAlignment="Left"
-                Padding="5,2">
+                Padding="5">
             <StackPanel Orientation="Horizontal">
-                <TextBlock x:Name="ExpandCollapseIcon" 
-                          Text="▼" 
-                          Margin="0,0,5,0"
-                          VerticalAlignment="Center"/>
-                <TextBlock x:Name="HeaderText" 
-                          FontWeight="SemiBold"
-                          VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding IsExpanded, RelativeSource={RelativeSource AncestorType=UserControl}, 
+                           Converter={StaticResource BoolToArrowConverter}}"
+                           FontFamily="Segoe UI Symbol"
+                           Margin="0,0,5,0"/>
+                <ContentPresenter Content="{Binding Header, 
+                                RelativeSource={RelativeSource AncestorType=UserControl}}"/>
             </StackPanel>
         </Button>
-        <ContentPresenter x:Name="ContentArea" 
-                         Content="{Binding Content, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                         Margin="20,5,0,0"/>
+        <ContentPresenter Content="{Binding Content, 
+                        RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        Visibility="{Binding IsExpanded, 
+                        RelativeSource={RelativeSource AncestorType=UserControl}, 
+                        Converter={StaticResource BoolToVisibilityConverter}}"/>
     </StackPanel>
 </UserControl> 

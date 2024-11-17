@@ -5,6 +5,10 @@ using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using FastImageGallery;
 
 namespace FastImageGallery
 {
@@ -15,6 +19,11 @@ namespace FastImageGallery
             "FastImageGallery", "ThumbnailCache");
 
         public ThumbnailCache()
+        {
+            EnsureDirectoriesExist();
+        }
+
+        private static void EnsureDirectoriesExist()
         {
             Directory.CreateDirectory(_cacheDirectory);
             foreach (ThumbnailSize size in Enum.GetValues(typeof(ThumbnailSize)))
@@ -30,7 +39,7 @@ namespace FastImageGallery
             return Path.Combine(_cacheDirectory, size.ToString(), aspectFolder);
         }
 
-        public string GetCachePath(string imagePath, int size, bool preserveAspectRatio)
+        public static string GetCachePath(string imagePath, int size, bool preserveAspectRatio)
         {
             using var md5 = MD5.Create();
             var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(imagePath));
@@ -199,6 +208,62 @@ namespace FastImageGallery
                     Logger.LogError("Error clearing all thumbnail caches", ex);
                 }
             }
+        }
+
+        public static async Task GenerateVideoThumbnailsAsync(ObservableCollection<ImageItem> images)
+        {
+            var videoItems = images.Where(img => 
+                {
+                    var ext = Path.GetExtension(img.FilePath).ToLower();
+                    return ext == ".mp4" || ext == ".avi" || ext == ".mov" || ext == ".wmv";
+                }).ToList();
+
+            Logger.Log($"Starting to generate {videoItems.Count} video thumbnails...");
+
+            foreach (var videoItem in videoItems)
+            {
+                try
+                {
+                    int size = (int)Settings.Current.PreferredThumbnailSize;
+                    bool preserveAspectRatio = Properties.Settings.Default.PreserveAspectRatio;
+                    string cachePath = GetCachePath(videoItem.FilePath, size, preserveAspectRatio);
+
+                    // Skip if we already have a cached thumbnail
+                    if (File.Exists(cachePath) && 
+                        File.GetLastWriteTime(cachePath) >= File.GetLastWriteTime(videoItem.FilePath))
+                    {
+                        continue;
+                    }
+
+                    // Generate thumbnail using FFmpegPlayer
+                    var player = new FFmpegPlayer();
+                    await player.LoadVideoAsync(videoItem.FilePath);
+                    
+                    // Save the first frame as thumbnail
+                    if (player.Source is WriteableBitmap writeableBitmap)
+                    {
+                        var encoder = new JpegBitmapEncoder();
+                        encoder.Frames.Add(BitmapFrame.Create(writeableBitmap));
+                        
+                        using var fileStream = File.Create(cachePath);
+                        encoder.Save(fileStream);
+                        
+                        // Update the thumbnail in the UI
+                        var newThumbnail = new BitmapImage(new Uri(cachePath));
+                        newThumbnail.Freeze();
+                        videoItem.Thumbnail = newThumbnail;
+                    }
+
+                    player.Dispose();
+                    Logger.Log($"Generated thumbnail for video: {videoItem.FilePath}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"Failed to generate video thumbnail: {videoItem.FilePath}", ex);
+                }
+            }
+
+            Logger.Log("Finished generating video thumbnails");
         }
     }
 } 

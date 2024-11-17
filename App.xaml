@@ -7,5 +7,7 @@
     <Application.Resources>
         <local:ScaleConverter x:Key="ScaleConverter"/>
         <converters:AspectRatioConverter x:Key="AspectRatioConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:BoolToArrowConverter x:Key="BoolToArrowConverter"/>
     </Application.Resources>
 </Application> 
