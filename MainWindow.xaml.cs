@@ -22,13 +22,23 @@ using CommunityToolkit.Mvvm.Messaging;
 using FastImageGallery.Messages;
 using PhotoOrganizer.Controls;
 using PhotoOrganizer.Models;
+using MessageBox = System.Windows.MessageBox;
 namespace FastImageGallery
 {
      public static class MediaElementExtensions
      {
           public static bool IsPlaying(this MediaElement media)
           {
-               return media.Position < media.NaturalDuration.TimeSpan;
+               try
+               {
+                    return media.NaturalDuration.HasTimeSpan && 
+                           media.Position < media.NaturalDuration.TimeSpan && 
+                           !(media.LoadedBehavior == MediaState.Pause);
+               }
+               catch
+               {
+                    return false;
+               }
           }
      }
      public partial class MainWindow : Window, INotifyPropertyChanged
@@ -328,29 +338,60 @@ namespace FastImageGallery
                     e.Handled = true;
                }
           }
-          private void ShowPreview(ImageItem imageItem)
+          private async void ShowPreview(ImageItem imageItem)
           {
                _currentPreviewItem = imageItem;
                
-               if (imageItem.IsGif)
+               var extension = Path.GetExtension(imageItem.FilePath).ToLower();
+               bool isVideo = extension == ".mp4" || extension == ".avi" || extension == ".mov" || extension == ".wmv";
+               
+               // Reset controls state
+               PreviewImage.Visibility = Visibility.Collapsed;
+               PreviewMedia.Visibility = Visibility.Collapsed;
+               MediaControls.Visibility = Visibility.Collapsed;
+               
+               if (isVideo)
                {
-                    // For GIFs, use MediaElement to support animation
-                    PreviewImage.Visibility = Visibility.Collapsed;
+                    try
+                    {
+                         // Show video controls
+                         PreviewMedia.Visibility = Visibility.Visible;
+                         MediaControls.Visibility = Visibility.Visible;
+                         
+                         // Load video using FFmpeg
+                         await PreviewMedia.LoadVideoAsync(imageItem.FilePath);
+                         PlayPauseButton.Content = "⏵";
+                         
+                         PreviewMedia.Opacity = 0;
+                         var mediaFadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
+                         PreviewMedia.BeginAnimation(OpacityProperty, mediaFadeIn);
+                         
+                         Logger.Log($"Loading video: {imageItem.FilePath}");
+                    }
+                    catch (Exception ex)
+                    {
+                         Logger.LogError($"Error loading video: {imageItem.FilePath}", ex);
+                         MessageBox.Show($"Error loading video: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    
+                    PreviewMedia.DataContext = imageItem;
+               }
+               else if (imageItem.IsGif)
+               {
+                    // For GIFs, use FFmpegPlayer
                     PreviewMedia.Visibility = Visibility.Visible;
-                    PreviewMedia.Source = new Uri(imageItem.FilePath);
+                    await PreviewMedia.LoadVideoAsync(imageItem.FilePath);
                     PreviewMedia.Play();
                     PreviewMedia.Opacity = 0;
                     var mediaFadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
                     PreviewMedia.BeginAnimation(OpacityProperty, mediaFadeIn);
                     
-                    // Set DataContext for MediaElement context menu
                     PreviewMedia.DataContext = imageItem;
                }
                else
                {
                     // Regular images use Image control
                     PreviewImage.Visibility = Visibility.Visible;
-                    PreviewMedia.Visibility = Visibility.Collapsed;
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
                     bitmap.UriSource = new Uri(imageItem.FilePath);
@@ -362,9 +403,9 @@ namespace FastImageGallery
                     var imageFadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
                     PreviewImage.BeginAnimation(OpacityProperty, imageFadeIn);
                     
-                    // Set DataContext for Image context menu
                     PreviewImage.DataContext = imageItem;
                }
+               
                // Show the modal container
                ModalContainer.Visibility = Visibility.Visible;
                // Fade in overlay
@@ -374,16 +415,25 @@ namespace FastImageGallery
           // Add these event handlers for MediaElement
           private void PreviewMedia_MediaOpened(object sender, RoutedEventArgs e)
           {
-               // Nothing needed here for GIFs
+               Logger.Log("Media opened successfully");
+               if (PreviewMedia is FFmpegPlayer player)
+               {
+                    Logger.Log($"Media duration: {player.Duration}");
+                    // No need to set behaviors since FFmpegPlayer handles its own state
+               }
+          }
+          private void PreviewMedia_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+          {
+               if (e.ErrorException != null)
+               {
+                    Logger.LogError($"Media failed to play: {e.ErrorException.Message}", e.ErrorException);
+                    MessageBox.Show($"Failed to play media: {e.ErrorException.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+               }
           }
           private void PreviewMedia_MediaEnded(object sender, RoutedEventArgs e)
           {
-               if (PreviewMedia.Source != null)
-               {
-                    // Loop GIFs
-                    PreviewMedia.Position = TimeSpan.Zero;
-                    PreviewMedia.Play();
-               }
+               PreviewMedia.Position = TimeSpan.Zero;
+               PlayPauseButton.Content = "⏵";
           }
           private void OpenSettings_Click(object sender, RoutedEventArgs e)
           {
@@ -499,29 +549,42 @@ namespace FastImageGallery
           }
           private void ClosePreview()
           {
-               _currentPreviewItem = null;
-               
-               // Stop any playing media
-               PreviewMedia.Stop();
-               PreviewMedia.Source = null;
-
-               // Create fade out animations
-               var fadeOut = new DoubleAnimation(0.7, 0, TimeSpan.FromMilliseconds(200));
-               var contentFadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
-
-               fadeOut.Completed += (s, args) => {
-                    ModalContainer.Visibility = Visibility.Collapsed;
-                    PreviewImage.Source = null; // Clear the image source
-               };
-
-               DarkOverlay.BeginAnimation(OpacityProperty, fadeOut);
-               if (PreviewImage.Visibility == Visibility.Visible)
+               try
                {
-                    PreviewImage.BeginAnimation(OpacityProperty, contentFadeOut);
+                    _currentPreviewItem = null;
+                    
+                    // Cleanup FFmpeg player
+                    if (PreviewMedia.Visibility == Visibility.Visible)
+                    {
+                         PreviewMedia.Pause();
+                         PlayPauseButton.Content = "⏵";
+                    }
+
+                    // Create fade out animations
+                    var fadeOut = new DoubleAnimation(0.7, 0, TimeSpan.FromMilliseconds(200));
+                    var contentFadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
+
+                    fadeOut.Completed += (s, args) => {
+                         ModalContainer.Visibility = Visibility.Collapsed;
+                         PreviewImage.Source = null;
+                         PreviewImage.Visibility = Visibility.Collapsed;
+                         PreviewMedia.Visibility = Visibility.Collapsed;
+                         MediaControls.Visibility = Visibility.Collapsed;
+                    };
+
+                    DarkOverlay.BeginAnimation(OpacityProperty, fadeOut);
+                    if (PreviewImage.Visibility == Visibility.Visible)
+                    {
+                         PreviewImage.BeginAnimation(OpacityProperty, contentFadeOut);
+                    }
+                    else
+                    {
+                         PreviewMedia.BeginAnimation(OpacityProperty, contentFadeOut);
+                    }
                }
-               else
+               catch (Exception ex)
                {
-                    PreviewMedia.BeginAnimation(OpacityProperty, contentFadeOut);
+                    Logger.LogError("Error closing preview", ex);
                }
           }
           // Add this to handle ESC key to close the preview
@@ -545,15 +608,15 @@ namespace FastImageGallery
           }
           private void ThumbnailSizeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
           {
-               if (ThumbnailSizeComboBox.SelectedItem is ComboBoxItem selectedItem)
+               if (ThumbnailSizeComboBox.SelectedItem is ComboBoxItem selectedItem && 
+                   selectedItem.Tag?.ToString() is string tagValue)
                {
-                    var newSize = Enum.Parse<ThumbnailSize>(selectedItem.Tag.ToString());
+                    var newSize = Enum.Parse<ThumbnailSize>(tagValue);
                     // Only refresh if the size actually changed
                     if (newSize != Settings.Current.PreferredThumbnailSize)
                     {
                          Settings.Current.PreferredThumbnailSize = newSize;
                          Settings.Save();
-                         // Just refresh thumbnails without clearing any cache
                          RefreshThumbnails();
                     }
                }
@@ -567,31 +630,48 @@ namespace FastImageGallery
           }
           private void PlayPause_Click(object sender, RoutedEventArgs e)
           {
-               if (PreviewMedia.Source == null) return;
-               if (PreviewMedia.Position >= PreviewMedia.NaturalDuration.TimeSpan)
+               if (PreviewMedia.Visibility != Visibility.Visible) return;
+
+               try
                {
-                    PreviewMedia.Position = TimeSpan.Zero;
+                    if (PreviewMedia.IsPlaying)
+                    {
+                         PreviewMedia.Pause();
+                         PlayPauseButton.Content = "⏵";
+                    }
+                    else
+                    {
+                         PreviewMedia.Play();
+                         PlayPauseButton.Content = "⏸";
+                    }
+
+                    Logger.Log($"PlayPause clicked. IsPlaying: {PreviewMedia.IsPlaying}");
                }
-               if (PreviewMedia.CanPause && PreviewMedia.Position < PreviewMedia.NaturalDuration.TimeSpan)
+               catch (Exception ex)
                {
-                    PreviewMedia.Pause();
-                    PlayPauseButton.Content = "⏵";
-               }
-               else
-               {
-                    PreviewMedia.Play();
-                    PlayPauseButton.Content = "⏸";
+                    Logger.LogError("Error during play/pause", ex);
+                    MessageBox.Show("Error controlling playback", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                }
           }
           private void Stop_Click(object sender, RoutedEventArgs e)
           {
-               if (PreviewMedia.Source == null) return;
-               PreviewMedia.Stop();
-               PlayPauseButton.Content = "⏵";
+               if (PreviewMedia.Visibility != Visibility.Visible) return;
+
+               try
+               {
+                    PreviewMedia.Stop();
+                    PreviewMedia.Position = TimeSpan.Zero;
+                    PlayPauseButton.Content = "⏵";
+               }
+               catch (Exception ex)
+               {
+                    Logger.LogError("Error stopping media", ex);
+                    MessageBox.Show("Error stopping playback", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+               }
           }
           private void Volume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
           {
-               if (PreviewMedia != null)
+               if (PreviewMedia.Visibility == Visibility.Visible)
                {
                     PreviewMedia.Volume = e.NewValue;
                }
@@ -682,7 +762,7 @@ namespace FastImageGallery
           {
                if (sender is MenuItem menuItem && menuItem.DataContext is ImageItem imageItem)
                {
-                    var result = System.Windows.MessageBox.Show(
+                    var result = MessageBox.Show(
                          $"Are you sure you want to delete this file?\n{imageItem.FilePath}",
                          "Confirm Delete",
                          MessageBoxButton.YesNo,
@@ -705,7 +785,7 @@ namespace FastImageGallery
                          catch (Exception ex)
                          {
                               Logger.LogError($"Failed to delete {imageItem.FilePath}", ex);
-                              System.Windows.MessageBox.Show(
+                              MessageBox.Show(
                                    "Failed to delete the file. Make sure you have the necessary permissions.",
                                    "Error",
                                    MessageBoxButton.OK,

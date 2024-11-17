@@ -80,3 +80,7 @@ bld/
 ## User settings
 *.user
 [Uu]ser[Ss]ettings/
+
+# FFmpeg binaries
+ffmpeg/x64/*.dll
+ffmpeg/x86/*.dll

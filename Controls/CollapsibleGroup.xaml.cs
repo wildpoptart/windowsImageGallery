@@ -9,9 +9,12 @@ namespace PhotoOrganizer.Controls
             DependencyProperty.Register("Header", typeof(string), typeof(CollapsibleGroup),
                 new PropertyMetadata(string.Empty, OnHeaderChanged));
 
-        public static readonly DependencyProperty ContentProperty =
-            DependencyProperty.Register("Content", typeof(object), typeof(CollapsibleGroup),
-                new PropertyMetadata(null, OnContentChanged));
+        public new static readonly DependencyProperty ContentProperty =
+            DependencyProperty.Register(
+                nameof(Content),
+                typeof(object),
+                typeof(CollapsibleGroup),
+                new PropertyMetadata(null));
 
         public string Header
         {
@@ -19,10 +22,10 @@ namespace PhotoOrganizer.Controls
             set { SetValue(HeaderProperty, value); }
         }
 
-        public object Content
+        public new object Content
         {
-            get { return GetValue(ContentProperty); }
-            set { SetValue(ContentProperty, value); }
+            get => GetValue(ContentProperty);
+            set => SetValue(ContentProperty, value);
         }
 
         private bool isExpanded = true;

@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace FastImageGallery
@@ -75,6 +77,23 @@ namespace FastImageGallery
             int size = (int)Settings.Current.PreferredThumbnailSize;
             bool preserveAspectRatio = Properties.Settings.Default.PreserveAspectRatio;
             
+            // Check if it's a video file
+            var extension = Path.GetExtension(imagePath).ToLower();
+            if (extension == ".mp4" || extension == ".avi" || extension == ".mov" || extension == ".wmv")
+            {
+                try
+                {
+                    return VideoThumbnailGenerator.GenerateVideoThumbnail(imagePath, size, size);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"Failed to generate video thumbnail: {imagePath}", ex);
+                    // Return a default video thumbnail
+                    return CreateDefaultVideoThumbnail(size);
+                }
+            }
+
+            // Existing image thumbnail code...
             using var stream = File.OpenRead(imagePath);
             var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.None);
             var frame = decoder.Frames[0];
@@ -107,6 +126,30 @@ namespace FastImageGallery
             }
             
             bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+
+        private static BitmapSource CreateDefaultVideoThumbnail(int size)
+        {
+            // Create a simple default thumbnail for videos when generation fails
+            var drawingVisual = new DrawingVisual();
+            using (var drawingContext = drawingVisual.RenderOpen())
+            {
+                // Draw a black background
+                drawingContext.DrawRectangle(
+                    Brushes.Black,
+                    null,
+                    new Rect(0, 0, size, size));
+
+                // Draw a play button icon
+                var playIcon = new PathGeometry();
+                // ... define play button triangle path ...
+                drawingContext.DrawGeometry(Brushes.White, null, playIcon);
+            }
+
+            var bitmap = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(drawingVisual);
             bitmap.Freeze();
             return bitmap;
         }
