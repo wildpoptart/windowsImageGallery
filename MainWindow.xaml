@@ -135,8 +135,8 @@ VerticalAlignment="Top">
 <ScrollViewer Grid.Row="2" 
               VerticalScrollBarVisibility="Auto" 
               HorizontalScrollBarVisibility="Disabled">
-    <StackPanel x:Name="GalleryContainer" 
-                Margin="10,5"/>
+    <WrapPanel x:Name="GalleryContainer" 
+               Margin="10,5"/>
 </ScrollViewer>
 <!-- Modal Overlay - Covers entire window -->
 <Grid Grid.RowSpan="3" Panel.ZIndex="1000" x:Name="ModalContainer" Visibility="Collapsed">

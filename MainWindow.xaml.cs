@@ -90,72 +90,87 @@ namespace FastImageGallery
           {
                InitializeComponent();
                DataContext = this;
-               Logger.Log("Application starting");
-               
-               // Initialize the thumbnail size dropdown
-               ThumbnailSizeComboBox.SelectedIndex = Settings.Current.PreferredThumbnailSize switch
-               {
-                    ThumbnailSize.Small => 0,
-                    ThumbnailSize.Medium => 1,
-                    ThumbnailSize.Large => 2,
-                    _ => 1
-               };
-               
-               // Load folders from settings but don't scan yet
+               InitializeImagePreview();
+
+               // Set default sort to "By Date" descending
+               _currentSortOption = "By Date";
+               _isAscending = false;
+               SortingComboBox.SelectedIndex = 1; // Select "By Date"
+               SortDirectionIcon.Text = "↓";
+
+               // Load saved settings
                foreach (var folder in Settings.Current.WatchedFolders)
                {
                     _watchedFolders.Add(folder);
-               }
-               Logger.Log($"Loaded {_watchedFolders.Count} watched folders from settings");
-               
-               // Subscribe to the Loaded event
-               this.Loaded += MainWindow_Loaded;
-               SortingComboBox.SelectionChanged += SortingComboBox_SelectionChanged;
-               SortingComboBox.SelectedIndex = 1;
-               
-               WeakReferenceMessenger.Default.Register<RegenerateThumbnailsMessage>(this, (r, m) =>
-               {
-                    RegenerateThumbnails();
-               });
-               
-               // Initialize with no organization
-               OrganizeGallery();
-               
-               // Add this line to initialize the preview handlers
-               InitializeImagePreview();
-               // Disable logging by default
-               Logger.IsEnabled = false;
-          }
-          private void MainWindow_Loaded(object sender, RoutedEventArgs e)
-          {
-               // Start loading images after the window is shown
-               IsLoading = true;
-               foreach (var folder in _watchedFolders)
-               {
                     _ = ScanFolderForImages(folder, CancellationToken.None);
                }
           }
-          private async void SelectFolders_Click(object sender, RoutedEventArgs e)
+          private async Task AddImageToGallery(string imagePath, CancellationToken cancellationToken)
           {
-               using var dialog = new FolderBrowserDialog();
-               if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+               try
                {
-                    _images.Clear();
-                    IsLoading = true;
-                    _loadingCancellation?.Cancel();
-                    _loadingCancellation = new CancellationTokenSource();
-                    try
+                    Logger.Log($"Starting to load image: {imagePath}");
+                    var size = (int)Settings.Current.PreferredThumbnailSize;
+                    
+                    // Load thumbnail in background thread
+                    var bitmap = await Task.Run(() => LoadThumbnail(imagePath, size), cancellationToken);
+                    
+                    // Create ImageItem
+                    var newItem = new ImageItem
                     {
-                         await ScanFolderForImages(dialog.SelectedPath, _loadingCancellation.Token);
-                    }
-                    catch (OperationCanceledException)
+                         FilePath = imagePath,
+                         Thumbnail = bitmap,
+                         Width = bitmap.PixelWidth,
+                         Height = bitmap.PixelHeight
+                    };
+
+                    // Update UI on dispatcher thread
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                         // Ignore cancellation
-                    }
-                    finally
-                    {
-                         IsLoading = false;
-                    }
+                         _images.Add(newItem);
+                         TotalImages++;
+
+                         // Create image element
+                         var image = CreateImageElement(newItem);
+                         _imageElements[imagePath] = image;
+
+                         // Apply current sorting
+                         var items = _images.ToList();
+                         IOrderedEnumerable<ImageItem> sortedItems;
+                         
+                         switch (_currentSortOption)
+                         {
+                              case "By Date":
+                                   sortedItems = _isAscending 
+                                        ? items.OrderBy(img => new FileInfo(img.FilePath).LastWriteTime)
+                                        : items.OrderByDescending(img => new FileInfo(img.FilePath).LastWriteTime);
+                                   break;
+                                   
+                              case "By Name":
+                              default:
+                                   sortedItems = _isAscending 
+                                        ? items.OrderBy(img => Path.GetFileName(img.FilePath))
+                                        : items.OrderByDescending(img => Path.GetFileName(img.FilePath));
+                                   break;
+                         }
+
+                         // Clear and rebuild gallery with sorted items
+                         _images.Clear();
+                         GalleryContainer.Children.Clear();
+
+                         foreach (var item in sortedItems)
+                         {
+                              _images.Add(item);
+                              var element = _imageElements[item.FilePath];
+                              GalleryContainer.Children.Add(element);
+                         }
+
+                         UpdateTotalImagesText();
+                    }, DispatcherPriority.Background);
+               }
+               catch (Exception ex)
+               {
+                    Logger.LogError($"Error adding image to gallery: {imagePath}", ex);
                }
           }
           private async Task ScanFolderForImages(string folderPath, CancellationToken cancellationToken)
@@ -168,6 +183,7 @@ namespace FastImageGallery
                     {
                          imageFiles = Directory.GetFiles(folderPath, "*.*", SearchOption.AllDirectories)
                          .Where(file => _supportedExtensions.Contains(Path.GetExtension(file).ToLower()))
+                         .OrderByDescending(file => new FileInfo(file).LastWriteTime)
                          .ToList();
                     }
                     catch (Exception ex)
@@ -175,74 +191,57 @@ namespace FastImageGallery
                          Logger.LogError($"Error scanning folder: {folderPath}", ex);
                          return;
                     }
+
                     if (imageFiles.Count == 0)
                     {
                          Logger.Log($"No supported images found in folder: {folderPath}");
                          return;
                     }
+
                     LoadingProgress.Maximum = imageFiles.Count;
                     LoadingProgress.Value = 0;
-                    var batchSize = 10;
-                    try
-                    {
-                         for (int i = 0; i < imageFiles.Count; i += batchSize)
-                         {
-                              cancellationToken.ThrowIfCancellationRequested();
-                              var batch = imageFiles.Skip(i).Take(batchSize);
-                              var tasks = batch.Select(path => AddImageToGallery(path, cancellationToken));
-                              await Task.WhenAll(tasks);
-                         }
 
-                         // After all images are loaded, generate video thumbnails
-                         await ThumbnailCache.GenerateVideoThumbnailsAsync(_images);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    // Process files in smaller batches with UI updates between each batch
+                    var batchSize = 20;  // Increased batch size for better performance
+                    var totalBatches = (imageFiles.Count + batchSize - 1) / batchSize;
+                    var currentBatch = 0;
+
+                    for (int i = 0; i < imageFiles.Count; i += batchSize)
                     {
-                         Logger.LogError($"Error processing images in folder: {folderPath}", ex);
+                         cancellationToken.ThrowIfCancellationRequested();
+                         currentBatch++;
+
+                         var batch = imageFiles.Skip(i).Take(batchSize);
+                         var tasks = batch.Select(path => AddImageToGallery(path, cancellationToken));
+
+                         // Process batch
+                         await Task.WhenAll(tasks);
+
+                         // Update progress
+                         LoadingProgress.Value = i + batchSize;
+
+                         // Allow UI to update and process user input
+                         if (currentBatch % 5 == 0)  // Every 5 batches
+                         {
+                              await Task.Delay(50, cancellationToken);  // Longer delay to ensure UI responsiveness
+                              await Dispatcher.Yield();  // Allow UI thread to process other work
+                         }
+                         else
+                         {
+                              await Task.Delay(1, cancellationToken);  // Minimal delay between other batches
+                         }
                     }
+
+                    // Generate video thumbnails after images are loaded
+                    await ThumbnailCache.GenerateVideoThumbnailsAsync(_images);
+               }
+               catch (Exception ex) when (ex is not OperationCanceledException)
+               {
+                    Logger.LogError($"Error processing images in folder: {folderPath}", ex);
                }
                finally
                {
                     IsLoading = false;
-               }
-          }
-          private async Task AddImageToGallery(string imagePath, CancellationToken cancellationToken)
-          {
-               try
-               {
-                    Logger.Log($"Starting to load image: {imagePath}");
-                    var size = (int)Settings.Current.PreferredThumbnailSize;
-                    var bitmap = await Task.Run(() => LoadThumbnail(imagePath, size), cancellationToken);
-                    Logger.Log($"Thumbnail loaded successfully for: {imagePath}");
-
-                    var newItem = new ImageItem
-                    {
-                         FilePath = imagePath,
-                         Thumbnail = bitmap,
-                         Width = bitmap.PixelWidth,
-                         Height = bitmap.PixelHeight
-                    };
-
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                         var insertIndex = FindInsertIndex(newItem);
-                         _images.Insert(insertIndex, newItem);
-                         TotalImages++;
-                         LoadingProgress.Value++;
-
-                         // Create and add the image element to the gallery
-                         var image = CreateImageElement(newItem);
-                         _imageElements[imagePath] = image;
-                         
-                         // Add to GalleryContainer
-                         GalleryContainer.Children.Add(image);
-
-                         UpdateTotalImagesText();
-                    });
-               }
-               catch (Exception ex)
-               {
-                    Logger.LogError($"Error adding image to gallery: {imagePath}", ex);
                }
           }
           private int FindInsertIndex(ImageItem newItem)
@@ -814,10 +813,13 @@ namespace FastImageGallery
                _imageElements.Clear();
                GalleryContainer.Children.Clear();
 
+               // Create a WrapPanel for the default view
+               var mainPanel = new WrapPanel();
+               GalleryContainer.Children.Add(mainPanel);
+
                if (currentOrganization == OrganizationType.None)
                {
-                    // No organization, just add all items to main container
-                    var mainPanel = new WrapPanel();
+                    // No organization, just add all items to main WrapPanel
                     foreach (var item in sortedItems)
                     {
                          _images.Add(item);
@@ -825,10 +827,12 @@ namespace FastImageGallery
                          _imageElements[item.FilePath] = imageElement;
                          mainPanel.Children.Add(imageElement);
                     }
-                    GalleryContainer.Children.Add(mainPanel);
                }
                else
                {
+                    // Remove the default WrapPanel for organized view
+                    GalleryContainer.Children.Clear();
+                    
                     // Group by year and month
                     var yearGroups = sortedItems
                          .GroupBy(img => new FileInfo(img.FilePath).LastWriteTime.Year)
