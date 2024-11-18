@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
+using NAudio.Wave;
 
 namespace FastImageGallery
 {
@@ -38,6 +39,10 @@ namespace FastImageGallery
         private readonly object _lockObject = new object();
         private bool _isDisposed;
 
+        private Process? _audioProcess;
+        private WaveOut? _waveOut;
+        private bool _isAudioStarted = false;
+
         public event EventHandler? MediaOpened;
         public event EventHandler? MediaEnded;
         public event EventHandler? PlaybackEnded;
@@ -48,7 +53,14 @@ namespace FastImageGallery
         public double Volume
         {
             get => _volume;
-            set => _volume = Math.Clamp(value, 0, 1);
+            set
+            {
+                _volume = Math.Clamp(value, 0, 1);
+                if (_waveOut != null)
+                {
+                    _waveOut.Volume = (float)_volume;
+                }
+            }
         }
 
         public MediaState LoadedBehavior { get; set; } = MediaState.Manual;
@@ -170,6 +182,42 @@ namespace FastImageGallery
 
                 // Read and display the first frame immediately
                 await ReadAndDisplayFrame();
+
+                // Start a separate FFmpeg process for audio with proper sync parameters
+                var audioArgs = $"-i \"{filePath}\" -vn -f wav -ar 44100 -ac 2 " +
+                               $"-af aresample=async=1:min_hard_comp=0.100000:first_pts=0 " +
+                               $"-acodec pcm_s16le -threads 0 -";
+                
+                _audioProcess = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = Path.Combine(FFmpegPath, "ffmpeg.exe"),
+                        Arguments = audioArgs,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    },
+                    EnableRaisingEvents = true
+                };
+
+                _audioProcess.ErrorDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                        Logger.Log($"FFmpeg Audio: {e.Data}");
+                };
+
+                // Start the process first
+                _audioProcess.Start();
+                
+                // Then set the priority
+                _audioProcess.PriorityClass = ProcessPriorityClass.AboveNormal;
+                
+                _audioProcess.BeginErrorReadLine();
+
+                // Don't start the audio process yet
+                _isAudioStarted = false;
             }
             catch (Exception ex)
             {
@@ -240,10 +288,40 @@ namespace FastImageGallery
         {
             if (_isPlaying) return;
             
-            Logger.Log("Starting playback");
-            _isPlaying = true;
-            _playbackCancellation = new CancellationTokenSource();
-            _playbackTask = Task.Run(PlaybackLoop);
+            try
+            {
+                Logger.Log("Starting playback");
+                _isPlaying = true;
+
+                // Start audio if not already started
+                if (!_isAudioStarted && _audioProcess != null)
+                {
+                    // Don't start the process again since it's already started in LoadVideoAsync
+                    var waveStream = new FFmpegWaveStream(_audioProcess.StandardOutput.BaseStream);
+                    _waveOut = new WaveOut
+                    {
+                        DesiredLatency = 100,  // Lower latency
+                        NumberOfBuffers = 2,   // Fewer buffers for lower latency
+                    };
+                    _waveOut.Init(waveStream);
+                    _waveOut.Volume = (float)_volume;
+                    _waveOut.Play();
+                    _isAudioStarted = true;
+                }
+                else if (_waveOut != null)
+                {
+                    _waveOut.Play();
+                }
+
+                _playbackCancellation = new CancellationTokenSource();
+                _playbackTask = Task.Run(PlaybackLoop);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Error starting playback", ex);
+                _isPlaying = false;
+                throw;
+            }
         }
 
         public void Pause()
@@ -252,6 +330,7 @@ namespace FastImageGallery
             
             Logger.Log("Pausing playback");
             _isPlaying = false;
+            _waveOut?.Pause();
             _playbackCancellation?.Cancel();
             try
             {
@@ -329,6 +408,7 @@ namespace FastImageGallery
             lock (_lockObject)
             {
                 _isPlaying = false;
+                _isAudioStarted = false;
 
                 if (_playbackCancellation != null)
                 {
@@ -379,6 +459,28 @@ namespace FastImageGallery
                         _ffmpegProcess = null;
                     }
                 }
+
+                if (_waveOut != null)
+                {
+                    _waveOut.Stop();
+                    _waveOut.Dispose();
+                    _waveOut = null;
+                }
+
+                if (_audioProcess != null)
+                {
+                    try
+                    {
+                        if (!_audioProcess.HasExited)
+                            _audioProcess.Kill();
+                    }
+                    catch { }
+                    finally
+                    {
+                        _audioProcess.Dispose();
+                        _audioProcess = null;
+                    }
+                }
             }
         }
 
@@ -391,6 +493,62 @@ namespace FastImageGallery
 
                 CleanupFFmpeg();
                 GC.SuppressFinalize(this);
+            }
+        }
+
+        private class FFmpegWaveStream : WaveStream
+        {
+            private readonly Stream _stream;
+            private readonly WaveFormat _waveFormat;
+            private readonly byte[] _buffer;
+            private int _bufferCount;
+            private int _bufferOffset;
+            private const int BufferSize = 4096 * 16;  // Larger buffer for smoother playback
+
+            public FFmpegWaveStream(Stream stream)
+            {
+                _stream = stream;
+                _waveFormat = new WaveFormat(44100, 16, 2);
+                _buffer = new byte[BufferSize];
+                _bufferCount = 0;
+                _bufferOffset = 0;
+            }
+
+            public override WaveFormat WaveFormat => _waveFormat;
+
+            public override long Length => _stream.Length;
+
+            public override long Position
+            {
+                get => _stream.Position;
+                set => _stream.Position = value;
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                int totalBytesRead = 0;
+
+                while (totalBytesRead < count)
+                {
+                    if (_bufferCount == 0)
+                    {
+                        // Fill the buffer
+                        _bufferCount = _stream.Read(_buffer, 0, BufferSize);
+                        _bufferOffset = 0;
+
+                        if (_bufferCount == 0)
+                            break;
+                    }
+
+                    int toCopy = Math.Min(count - totalBytesRead, _bufferCount);
+                    Buffer.BlockCopy(_buffer, _bufferOffset, buffer, offset + totalBytesRead, toCopy);
+
+                    _bufferOffset += toCopy;
+                    _bufferCount -= toCopy;
+                    totalBytesRead += toCopy;
+                }
+
+                return totalBytesRead;
             }
         }
     }
