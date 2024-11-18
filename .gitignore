@@ -44,16 +44,18 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-## ReSharper
-_ReSharper*/
-*.[Rr]e[Ss]harper
-*.DotSettings.user
-
-## NuGet
-packages/
-*.nupkg
-**/[Pp]ackages/*
-!**/[Pp]ackages/build/
+## FFmpeg binaries
+ffmpeg/
+*.dll
+# Specific FFmpeg files
+avcodec-*.dll
+avdevice-*.dll
+avfilter-*.dll
+avformat-*.dll
+avutil-*.dll
+postproc-*.dll
+swresample-*.dll
+swscale-*.dll
 
 ## Build results
 [Dd]ebug/
@@ -70,17 +72,8 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-## Visual Studio Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-## User settings
-*.user
-[Uu]ser[Ss]ettings/
-
-# FFmpeg binaries
-ffmpeg/x64/*.dll
-ffmpeg/x86/*.dll
+## Application specific
+# Thumbnail cache files
+ThumbnailCache/
+*.thumb
+*.cache
